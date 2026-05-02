@@ -40,3 +40,4 @@ yarn-error.*
 # Other
 .github
 .vscode
+assets copy

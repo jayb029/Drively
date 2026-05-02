@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   Alert,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useDriving } from '../contexts/DrivingContext';
@@ -66,10 +67,40 @@ export default function OnboardingScreen({ navigation }) {
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
   const [customGoal, setCustomGoal] = useState(false);
-  const [dayHours, setDayHours] = useState(40);
-  const [nightHours, setNightHours] = useState(10);
+  const [dayHours, setDayHours] = useState('40');
+  const [nightHours, setNightHours] = useState('10');
   const [temperatureUnit, setTemperatureUnit] = useState('metric');
   const [hasAgreed, setHasAgreed] = useState(false);
+
+  const parseGoalValues = () => {
+    const parsedDay = parseFloat(dayHours);
+    const parsedNight = parseFloat(nightHours);
+    return {
+      day: Number.isFinite(parsedDay) ? parsedDay : 0,
+      night: Number.isFinite(parsedNight) ? parsedNight : 0,
+    };
+  };
+
+  const areGoalsValid = () => {
+    const { day, night } = parseGoalValues();
+    return day >= 0 && night >= 0 && day + night > 0;
+  };
+
+  const validateGoals = () => {
+    const { day, night } = parseGoalValues();
+
+    if (day < 0 || night < 0) {
+      Alert.alert('Invalid Hours', 'Goal hours cannot be negative.');
+      return false;
+    }
+
+    if (day + night === 0) {
+      Alert.alert('Invalid Goal', 'Please enter at least 1 hour for day or night driving.');
+      return false;
+    }
+
+    return true;
+  };
 
   const handleLicenseSelection = (type) => {
     setLicenseType(type);
@@ -87,9 +118,16 @@ export default function OnboardingScreen({ navigation }) {
       setCustomGoal(true);
     } else {
       setCustomGoal(false);
-      setDayHours(preset.dayHours);
-      setNightHours(preset.nightHours);
+      setDayHours(String(preset.dayHours));
+      setNightHours(String(preset.nightHours));
     }
+  };
+
+  const handleGoalContinue = () => {
+    if (customGoal && !validateGoals()) {
+      return;
+    }
+    setStep(3);
   };
 
   const handleComplete = async () => {
@@ -97,6 +135,12 @@ export default function OnboardingScreen({ navigation }) {
       Alert.alert('Agreement Required', 'Please agree to the data storage terms to continue.');
       return;
     }
+
+    if (!validateGoals()) {
+      return;
+    }
+
+    const { day: parsedDayHours, night: parsedNightHours } = parseGoalValues();
 
     // Request location permission for weather data
     try {
@@ -115,8 +159,8 @@ export default function OnboardingScreen({ navigation }) {
     const userInfo = {
       licenseType,
       licenseDate: new Date().toISOString().split('T')[0],
-      goalDayHours: dayHours,
-      goalNightHours: nightHours,
+      goalDayHours: parsedDayHours,
+      goalNightHours: parsedNightHours,
       completedDayHours: 0,
       completedNightHours: 0,
     };
@@ -186,7 +230,7 @@ export default function OnboardingScreen({ navigation }) {
             style={[
               styles.goalCard,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-              !customGoal && dayHours === preset.dayHours && nightHours === preset.nightHours && [
+              !customGoal && Number(dayHours) === preset.dayHours && Number(nightHours) === preset.nightHours && [
                 styles.selectedOption, 
                 { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
               ],
@@ -216,6 +260,52 @@ export default function OnboardingScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {customGoal && (
+        <View style={styles.customGoalContainer}>
+          <View style={styles.goalInputRow}>
+            <View style={styles.goalInputBlock}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Day Driving Hours</Text>
+              <TextInput
+                style={[
+                  styles.goalInput,
+                  { 
+                    backgroundColor: theme.colors.surface, 
+                    borderColor: theme.colors.border.light,
+                    color: theme.colors.text.primary,
+                  }
+                ]}
+                value={dayHours}
+                onChangeText={(value) => setDayHours(value.replace(/[^0-9.]/g, ''))}
+                keyboardType="numeric"
+                placeholder="e.g. 40"
+                placeholderTextColor={theme.colors.text.light}
+              />
+            </View>
+            <View style={styles.goalInputBlock}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Night Driving Hours</Text>
+              <TextInput
+                style={[
+                  styles.goalInput,
+                  { 
+                    backgroundColor: theme.colors.surface, 
+                    borderColor: theme.colors.border.light,
+                    color: theme.colors.text.primary,
+                  }
+                ]}
+                value={nightHours}
+                onChangeText={(value) => setNightHours(value.replace(/[^0-9.]/g, ''))}
+                keyboardType="numeric"
+                placeholder="e.g. 10"
+                placeholderTextColor={theme.colors.text.light}
+              />
+            </View>
+          </View>
+          <Text style={[styles.customGoalHint, { color: theme.colors.text.secondary }]}>
+            Total goal: {(parseGoalValues().day + parseGoalValues().night) || 0} hours. Adjust both fields to match your local requirements.
+          </Text>
+        </View>
+      )}
+
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.backButton, { borderColor: theme.colors.border.medium }]}
@@ -225,8 +315,13 @@ export default function OnboardingScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.continueButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => setStep(3)}
+          style={[
+            styles.continueButton, 
+            { backgroundColor: theme.colors.primary },
+            customGoal && !areGoalsValid() && [styles.disabledButton, { backgroundColor: theme.colors.gray[400] }]
+          ]}
+          onPress={handleGoalContinue}
+          disabled={customGoal && !areGoalsValid()}
         >
           <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>Continue</Text>
         </TouchableOpacity>
@@ -429,7 +524,6 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    transition: 'all 0.3s ease',
   },
   activeDot: {
     transform: [{ scale: 1.2 }],
@@ -512,6 +606,33 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   goalDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  customGoalContainer: {
+    marginTop: 8,
+    marginBottom: 20,
+    gap: 12,
+  },
+  goalInputRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  goalInputBlock: {
+    flex: 1,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  goalInput: {
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+  },
+  customGoalHint: {
     fontSize: 14,
     lineHeight: 20,
   },

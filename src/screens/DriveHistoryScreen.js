@@ -97,6 +97,17 @@ export default function DriveHistoryScreen({ navigation }) {
               {drive.supervisorAge && ` (${drive.supervisorAge})`}
             </Text>
           )}
+          {drive.destination && (
+            <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>Destination: {drive.destination}</Text>
+          )}
+          {drive.routeSummary && (
+            <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>
+              Tracking: {drive.routeSummary.distanceKm} km · avg {drive.routeSummary.averageSpeedKmh} km/h · max {drive.routeSummary.maxSpeedKmh} km/h
+            </Text>
+          )}
+          {drive.source === 'detected' && (
+            <Text style={[styles.detailText, { color: theme.colors.primary }]}>Started from drive detection</Text>
+          )}
         </View>
       )}
 

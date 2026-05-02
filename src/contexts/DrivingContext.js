@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import { AppState } from 'react-native';
 import { loadData, saveData } from '../utils/storage';
 import { logger, logUserAction, logError } from '../utils/logger';
 import { getAppVersion } from '../utils/appInfo';
@@ -21,6 +22,10 @@ const ACTIONS = {
   UPDATE_STREAKS: 'UPDATE_STREAKS',
   USE_FREEZE_DAY: 'USE_FREEZE_DAY',
   UPDATE_SETTINGS: 'UPDATE_SETTINGS',
+  ADD_SUPERVISOR_PROFILE: 'ADD_SUPERVISOR_PROFILE',
+  UPDATE_SUPERVISOR_PROFILE: 'UPDATE_SUPERVISOR_PROFILE',
+  DELETE_SUPERVISOR_PROFILE: 'DELETE_SUPERVISOR_PROFILE',
+  UPDATE_DETECTED_EVENT: 'UPDATE_DETECTED_EVENT',
   COMPLETE_ONBOARDING: 'COMPLETE_ONBOARDING',
   RESET_DATA: 'RESET_DATA',
 };
@@ -36,7 +41,9 @@ const initialState = {
     completedNightHours: 0,
     onboardingComplete: false,
   },
+  supervisorProfiles: [],
   drives: [],
+  detectedEvents: [],
   streaks: {
     current: 0,
     longest: 0,
@@ -51,6 +58,10 @@ const initialState = {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
+    driveDetectionEnabled: false,
+    driveDetectionSensitivity: 'balanced',
+    notificationPermissionStatus: null,
+    backgroundLocationStatus: null,
   },
   loading: true,
   error: null,
@@ -211,6 +222,43 @@ function drivingReducer(state, action) {
         },
       };
 
+    case ACTIONS.ADD_SUPERVISOR_PROFILE:
+      return {
+        ...state,
+        supervisorProfiles: [
+          ...state.supervisorProfiles,
+          {
+            id: Date.now().toString(),
+            createdAt: new Date().toISOString(),
+            ...action.payload,
+          },
+        ],
+      };
+
+    case ACTIONS.UPDATE_SUPERVISOR_PROFILE:
+      return {
+        ...state,
+        supervisorProfiles: state.supervisorProfiles.map((profile) =>
+          profile.id === action.payload.id
+            ? { ...profile, ...action.payload, updatedAt: new Date().toISOString() }
+            : profile
+        ),
+      };
+
+    case ACTIONS.DELETE_SUPERVISOR_PROFILE:
+      return {
+        ...state,
+        supervisorProfiles: state.supervisorProfiles.filter((profile) => profile.id !== action.payload),
+      };
+
+    case ACTIONS.UPDATE_DETECTED_EVENT:
+      return {
+        ...state,
+        detectedEvents: state.detectedEvents.map((event) =>
+          event.id === action.payload.id ? { ...event, ...action.payload } : event
+        ),
+      };
+
     case ACTIONS.COMPLETE_ONBOARDING:
       return {
         ...state,
@@ -285,6 +333,21 @@ export function DrivingProvider({ children }) {
     initializeData();
   }, []);
 
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState !== 'active' || state.loading) return;
+
+      try {
+        const data = await loadData();
+        dispatch({ type: ACTIONS.LOAD_DATA, payload: data });
+      } catch (error) {
+        console.error('Failed to refresh data on app foreground:', error);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [state.loading]);
+
   // Save data whenever state changes (except loading)
   useEffect(() => {
     if (!state.loading) {
@@ -292,7 +355,9 @@ export function DrivingProvider({ children }) {
         try {
           const dataToSave = {
             user: state.user,
+            supervisorProfiles: state.supervisorProfiles,
             drives: state.drives,
+            detectedEvents: state.detectedEvents,
             streaks: state.streaks,
             settings: state.settings,
             version: getAppVersion(),
@@ -318,7 +383,7 @@ export function DrivingProvider({ children }) {
       
       saveDataAsync();
     }
-  }, [state.user, state.drives, state.streaks, state.settings, state.loading]);
+  }, [state.user, state.supervisorProfiles, state.drives, state.detectedEvents, state.streaks, state.settings, state.loading]);
 
   // Context value with actions
   const value = {
@@ -345,6 +410,18 @@ export function DrivingProvider({ children }) {
     
     updateSettings: (settings) => 
       dispatch({ type: ACTIONS.UPDATE_SETTINGS, payload: settings }),
+
+    addSupervisorProfile: (profile) =>
+      dispatch({ type: ACTIONS.ADD_SUPERVISOR_PROFILE, payload: profile }),
+
+    updateSupervisorProfile: (profile) =>
+      dispatch({ type: ACTIONS.UPDATE_SUPERVISOR_PROFILE, payload: profile }),
+
+    deleteSupervisorProfile: (profileId) =>
+      dispatch({ type: ACTIONS.DELETE_SUPERVISOR_PROFILE, payload: profileId }),
+
+    updateDetectedEvent: (event) =>
+      dispatch({ type: ACTIONS.UPDATE_DETECTED_EVENT, payload: event }),
     
     completeOnboarding: () => 
       dispatch({ type: ACTIONS.COMPLETE_ONBOARDING }),

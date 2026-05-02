@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,12 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme, THEME_MODES } from '../contexts/ThemeContext';
 import { clearAllData } from '../utils/storage';
 import { getAppVersion } from '../utils/appInfo';
+import {
+  isDriveDetectionRunning,
+  requestDriveDetectionPermissions,
+  startDriveDetection,
+  stopDriveDetection,
+} from '../services/driveDetection';
 import { 
   getLogStats, 
   clearLogs, 
@@ -42,6 +48,14 @@ export default function SettingsScreen({ navigation }) {
   // Debug logging state
   const [logStats, setLogStats] = useState(null);
   const [showDebugDetails, setShowDebugDetails] = useState(false);
+  const [driveDetectionRunning, setDriveDetectionRunning] = useState(false);
+  const [updatingDetection, setUpdatingDetection] = useState(false);
+
+  useEffect(() => {
+    isDriveDetectionRunning()
+      .then(setDriveDetectionRunning)
+      .catch(() => setDriveDetectionRunning(false));
+  }, []);
 
   const handleSaveGoals = () => {
     const dayHours = parseFloat(tempDayHours) || 0;
@@ -65,6 +79,12 @@ export default function SettingsScreen({ navigation }) {
     setEditingGoals(false);
     logUserAction('update_goals', 'SETTINGS', { dayHours, nightHours });
     Alert.alert('Goals Updated', 'Your driving goals have been updated.');
+  };
+
+  const handleCancelGoalEdit = () => {
+    setTempDayHours(user.goalDayHours.toString());
+    setTempNightHours(user.goalNightHours.toString());
+    setEditingGoals(false);
   };
 
   const handleResetData = () => {
@@ -92,6 +112,40 @@ export default function SettingsScreen({ navigation }) {
         },
       ]
     );
+  };
+
+  const handleDriveDetectionToggle = async (enabled) => {
+    try {
+      setUpdatingDetection(true);
+
+      if (enabled) {
+        const permissions = await requestDriveDetectionPermissions();
+        updateSettings({
+          notificationPermissionStatus: permissions.notifications,
+          backgroundLocationStatus: permissions.backgroundLocation,
+        });
+
+        if (!permissions.granted) {
+          Alert.alert(
+            'Permissions needed',
+            'Drive detection needs notification, foreground location, and background location permission on Android.'
+          );
+          return;
+        }
+
+        await startDriveDetection();
+        setDriveDetectionRunning(true);
+        updateSettings({ driveDetectionEnabled: true });
+      } else {
+        await stopDriveDetection();
+        setDriveDetectionRunning(false);
+        updateSettings({ driveDetectionEnabled: false });
+      }
+    } catch (error) {
+      Alert.alert('Tracking Error', 'Could not update drive detection. Try again from a development or release build.');
+    } finally {
+      setUpdatingDetection(false);
+    }
   };
 
   // Debug logging functions
@@ -187,7 +241,15 @@ export default function SettingsScreen({ navigation }) {
               <View style={styles.settingHeader}>
                 <Text style={styles.settingTitle}>Driving Goals</Text>
                 <TouchableOpacity
-                  onPress={() => editingGoals ? handleSaveGoals() : setEditingGoals(true)}
+                  onPress={() => {
+                    if (editingGoals) {
+                      handleSaveGoals();
+                      return;
+                    }
+                    setTempDayHours(user.goalDayHours.toString());
+                    setTempNightHours(user.goalNightHours.toString());
+                    setEditingGoals(true);
+                  }}
                   style={styles.editButton}
                 >
                   <Text style={styles.editButtonText}>
@@ -208,9 +270,22 @@ export default function SettingsScreen({ navigation }) {
                       placeholder="40"
                     />
                   </View>
+                  <View style={styles.goalInput}>
+                    <Text style={styles.inputLabel}>Night Hours:</Text>
+                    <TextInput
+                      style={styles.numberInput}
+                      value={tempNightHours}
+                      onChangeText={setTempNightHours}
+                      keyboardType="numeric"
+                      placeholder="10"
+                    />
+                  </View>
+                  <Text style={styles.goalHelperText}>
+                    Total goal: {(parseFloat(tempDayHours) || 0) + (parseFloat(tempNightHours) || 0)} hours
+                  </Text>
                   
                   <TouchableOpacity
-                    onPress={() => setEditingGoals(false)}
+                    onPress={handleCancelGoalEdit}
                     style={styles.cancelButton}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -310,6 +385,69 @@ export default function SettingsScreen({ navigation }) {
                   </Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          ),
+        },
+      ],
+    },
+    {
+      title: 'Tracking & Alerts',
+      items: [
+        {
+          type: 'custom',
+          component: (
+            <View style={styles.trackingContainer}>
+              <View style={styles.settingHeader}>
+                <View style={styles.settingContent}>
+                  <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>Driving Detection</Text>
+                  <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
+                    {driveDetectionRunning ? 'Background detector is running' : 'Notify when driving-like movement is detected'}
+                  </Text>
+                </View>
+                <Switch
+                  value={!!settings.driveDetectionEnabled}
+                  onValueChange={handleDriveDetectionToggle}
+                  disabled={updatingDetection}
+                  trackColor={{ false: theme.colors.border.medium, true: theme.colors.primaryLight }}
+                  thumbColor={settings.driveDetectionEnabled ? theme.colors.primary : theme.colors.surface}
+                />
+              </View>
+
+              <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>Detection Sensitivity</Text>
+              <View style={styles.sensitivityOptions}>
+                {[
+                  { key: 'conservative', label: 'Conservative' },
+                  { key: 'balanced', label: 'Balanced' },
+                  { key: 'sensitive', label: 'Sensitive' },
+                ].map((option) => (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.sensitivityOption,
+                      { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border.light },
+                      settings.driveDetectionSensitivity === option.key && {
+                        backgroundColor: theme.colors.primary,
+                        borderColor: theme.colors.primary,
+                      },
+                    ]}
+                    onPress={() => updateSettings({ driveDetectionSensitivity: option.key })}
+                  >
+                    <Text
+                      style={[
+                        styles.sensitivityText,
+                        { color: theme.colors.text.primary },
+                        settings.driveDetectionSensitivity === option.key && { color: theme.colors.text.inverse },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
+                Notifications: {settings.notificationPermissionStatus || 'not requested'} | Background location: {settings.backgroundLocationStatus || 'not requested'}
+              </Text>
             </View>
           ),
         },
@@ -636,6 +774,10 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 4,
   },
+  goalHelperText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
   editGoalsContainer: {
     gap: 12,
   },
@@ -718,6 +860,25 @@ const styles = StyleSheet.create({
   temperatureOptionText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  trackingContainer: {
+    gap: 12,
+  },
+  sensitivityOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sensitivityOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  sensitivityText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   settingSubtitle: {
     fontSize: 13,

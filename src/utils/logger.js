@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const LOGS_DIR = `${FileSystem.documentDirectory}drively/logs/`;
 const LOG_FILE = `${LOGS_DIR}debug.log`;

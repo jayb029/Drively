@@ -6,7 +6,7 @@
  */
 
 import * as Print from 'expo-print';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { formatDateForDisplay } from './time';
 
 /**
@@ -19,13 +19,65 @@ import { formatDateForDisplay } from './time';
  * @returns {string} HTML content for PDF generation
  */
 export const generateDrivingReportHTML = (data, isOfficial = false) => {
-  const { drives, user, streaks } = data;
+  const { drives, supervisorProfiles = [], user, streaks } = data;
   const totalDayHours = user.completedDayHours;
   const totalNightHours = user.completedNightHours;
   const totalHours = totalDayHours + totalNightHours;
   const goalHours = user.goalDayHours + user.goalNightHours;
   const progressPercent = Math.round((totalHours / goalHours) * 100);
   const currentDate = formatDateForDisplay(new Date().toISOString().split('T')[0]);
+
+  const escapeHTML = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const signatureToSVG = (signature) => {
+    const paths = Array.isArray(signature?.paths) ? signature.paths : [];
+    if (paths.length === 0) {
+      return '<div class="signature-empty"></div>';
+    }
+
+    const width = Number(signature.width) || 320;
+    const height = Number(signature.height) || 160;
+    const pathMarkup = paths
+      .map((path) => `<path d="${escapeHTML(path)}" stroke="#111827" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>`)
+      .join('');
+
+    return `
+      <svg class="saved-signature" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+        ${pathMarkup}
+      </svg>
+    `;
+  };
+
+  const profileAgreementHTML = supervisorProfiles.length > 0
+    ? supervisorProfiles.map((profile) => `
+      <div class="profile-signature-row">
+        <div class="profile-name-block">
+          <div class="profile-name">${escapeHTML(profile.name)}</div>
+          <div class="profile-meta">${escapeHTML([profile.relationship, profile.age ? `${profile.age} years old` : null].filter(Boolean).join(' · '))}</div>
+        </div>
+        <div class="profile-signature-block">
+          ${signatureToSVG(profile.signature)}
+          <div class="signature-label">Signature</div>
+        </div>
+      </div>
+    `).join('')
+    : `
+      <div class="profile-signature-row">
+        <div class="profile-name-block">
+          <div class="profile-name">No saved supervisor profiles</div>
+          <div class="profile-meta">Add supervisor profiles and signatures before creating an official export.</div>
+        </div>
+        <div class="profile-signature-block">
+          <div class="signature-empty"></div>
+          <div class="signature-label">Signature</div>
+        </div>
+      </div>
+    `;
   
   let drivesHTML = '';
   drives.forEach((drive, index) => {
@@ -43,19 +95,19 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
     
     drivesHTML += `
       <tr style="background-color: ${rowColor};">
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${formatDateForDisplay(drive.date)}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${drive.startTime}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${escapeHTML(formatDateForDisplay(drive.date))}</td>
+        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${escapeHTML(drive.startTime)}</td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${duration}</td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">
           <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; color: white; background-color: ${drive.isNightDrive ? '#1f2937' : '#f59e0b'};">
-            ${type}
+            ${escapeHTML(type)}
           </span>
         </td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; min-width: 120px;">
-          <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px;">${supervisor}</div>
+          <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px;">${escapeHTML(supervisor)}</div>
         </td>
         <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; text-align: center; min-width: 80px;">
-          <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px; font-weight: 600;">${initials}</div>
+          <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px; font-weight: 600;">${escapeHTML(initials)}</div>
         </td>
       </tr>
     `;
@@ -196,27 +248,63 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
             color: #6b7280;
             font-size: 14px;
           }
-          .signature-line {
+          .profile-agreement {
+            margin-top: 40px;
+            page-break-inside: avoid;
+          }
+          .profile-agreement h3 {
+            margin: 0 0 10px 0;
+            color: #111827;
+            font-size: 17px;
+          }
+          .agreement-text {
+            margin: 0 0 16px 0;
+            color: #374151;
+            font-size: 13px;
+            line-height: 1.45;
+          }
+          .profile-signature-row {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 30px;
-            margin-top: 30px;
+            align-items: stretch;
+            gap: 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            page-break-inside: avoid;
           }
-          .signature-field {
-            flex: 2;
-          }
-          .date-field {
+          .profile-name-block {
             flex: 1;
+            padding: 12px;
+            background: #ffffff;
+            border-right: 1px solid #d1d5db;
           }
-          .signature-field .line,
-          .date-field .line {
-            border-bottom: 1px solid #374151;
-            height: 25px;
-            margin-bottom: 5px;
+          .profile-name {
+            color: #111827;
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 3px;
           }
-          .signature-field .label,
-          .date-field .label {
+          .profile-meta {
+            color: #6b7280;
+            font-size: 12px;
+          }
+          .profile-signature-block {
+            flex: 1;
+            padding: 8px 12px 6px 12px;
+            background: #ffffff;
+            min-height: 82px;
+          }
+          .saved-signature {
+            width: 100%;
+            height: 62px;
+            display: block;
+          }
+          .signature-empty {
+            height: 62px;
+            border-bottom: 1px solid #111827;
+          }
+          .signature-label {
             font-size: 12px;
             color: #6b7280;
             text-align: center;
@@ -345,19 +433,12 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
         </div>
 
         ${isOfficial ? `
-        <div class="signature-section">
-          <h3>Parent/Guardian Verification</h3>
-          <p>I certify that the driving hours and information recorded in this log are accurate and complete.</p>
-          <div class="signature-line">
-            <div class="signature-field">
-              <div class="line"></div>
-              <div class="label">Parent/Guardian Signature</div>
-            </div>
-            <div class="date-field">
-              <div class="line"></div>
-              <div class="label">Date (MM/DD/YYYY)</div>
-            </div>
-          </div>
+        <div class="profile-agreement">
+          <h3>Supervisor Agreement</h3>
+          <p class="agreement-text">
+            I agree and certify under penalty of perjury that the driving practice recorded in this log is accurate to the best of my knowledge, that I supervised or verified the applicable entries associated with my profile, and that the signature shown below is my signature for official review.
+          </p>
+          ${profileAgreementHTML}
         </div>
         ` : ''}
 

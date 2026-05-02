@@ -11,7 +11,7 @@ import {
   Switch,
   Modal,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { Platform } from 'react-native';
@@ -22,7 +22,7 @@ import { generatePDFReport } from '../utils/pdf';
 import { formatDateForDisplay } from '../utils/time';
 
 export default function ExportScreen({ navigation }) {
-  const { drives, user, streaks } = useDriving();
+  const { drives, supervisorProfiles, user, streaks } = useDriving();
   const { theme } = useTheme();
   const [exporting, setExporting] = useState(false);
   const [isOfficialPDF, setIsOfficialPDF] = useState(false);
@@ -240,7 +240,7 @@ export default function ExportScreen({ navigation }) {
     try {
       setExporting(true);
       
-      const data = { drives, user, streaks };
+      const data = { drives, supervisorProfiles, user, streaks };
       const pdfUri = await generatePDFReport(data, null, isOfficialPDF);
       
       if (exportMode === 'share') {
@@ -437,7 +437,7 @@ export default function ExportScreen({ navigation }) {
               }}
             >
               <View style={styles.modeIcon}>
-                <Text style={styles.modeIconText}>�</Text>
+                <Text style={styles.modeIconText}>💾</Text>
               </View>
               <View style={styles.modeContent}>
                 <Text style={styles.modeTitle}>Save to File</Text>
@@ -465,7 +465,7 @@ export default function ExportScreen({ navigation }) {
         {exportMode && (
           <View style={styles.modeIndicator}>
             <Text style={styles.modeIndicatorText}>
-              {exportMode === 'share' ? '📤 Share Mode' : '� Save to File Mode'}
+              {exportMode === 'share' ? '📤 Share Mode' : '📁 Save to File Mode'}
             </Text>
             <TouchableOpacity
               onPress={() => setShowModeSelector(true)}
@@ -585,7 +585,7 @@ export default function ExportScreen({ navigation }) {
         {/* Backup Reminder */}
         <View style={styles.reminderContainer}>
           <Text style={styles.reminderTitle}>
-            {exportMode === 'share' ? '� Sharing Tip' : '�💡 Backup Reminder'}
+            {exportMode === 'share' ? '📤 Sharing Tip' : '💡 Backup Reminder'}
           </Text>
           <Text style={styles.reminderText}>
             {exportMode === 'share' 

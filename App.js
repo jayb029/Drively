@@ -8,6 +8,7 @@ import { DrivingProvider } from './src/contexts/DrivingContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
+import { configureDriveNotifications } from './src/services/driveDetection';
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
@@ -30,6 +31,7 @@ function AppContent() {
             // Schedule automatic log cleanup
             await scheduleLogCleanup();
             await logger.info('Log cleanup scheduler initialized', 'APP_STARTUP');
+            await configureDriveNotifications();
           })(),
           timeoutPromise
         ]);

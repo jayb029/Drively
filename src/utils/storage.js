@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getAppVersion } from './appInfo';
 
 const DATA_DIR = `${FileSystem.documentDirectory}drively/`;
@@ -18,7 +18,9 @@ const DEFAULT_DATA = {
     completedNightHours: 0,
     onboardingComplete: false,
   },
+  supervisorProfiles: [],
   drives: [],
+  detectedEvents: [],
   streaks: {
     current: 0,
     longest: 0,
@@ -31,9 +33,39 @@ const DEFAULT_DATA = {
     nightTimeEnd: '06:00',
     backupReminder: true,
     lastBackupDate: null,
+    temperatureUnit: 'metric',
+    driveDetectionEnabled: false,
+    driveDetectionSensitivity: 'balanced',
+    notificationPermissionStatus: null,
+    backgroundLocationStatus: null,
   },
   version: getAppVersion(),
 };
+
+function migrateData(data) {
+  const merged = {
+    ...DEFAULT_DATA,
+    ...data,
+    user: {
+      ...DEFAULT_DATA.user,
+      ...(data.user || {}),
+    },
+    supervisorProfiles: Array.isArray(data.supervisorProfiles) ? data.supervisorProfiles : [],
+    drives: Array.isArray(data.drives) ? data.drives : [],
+    detectedEvents: Array.isArray(data.detectedEvents) ? data.detectedEvents : [],
+    streaks: {
+      ...DEFAULT_DATA.streaks,
+      ...(data.streaks || {}),
+    },
+    settings: {
+      ...DEFAULT_DATA.settings,
+      ...(data.settings || {}),
+    },
+    version: getAppVersion(),
+  };
+
+  return merged;
+}
 
 /**
  * Ensure the data directory exists
@@ -67,7 +99,7 @@ export async function loadData() {
       throw new Error('Invalid data structure');
     }
     
-    return data;
+    return migrateData(data);
   } catch (error) {
     console.warn('Main data file corrupted, trying backup:', error);
     
@@ -78,8 +110,9 @@ export async function loadData() {
         const backupData = JSON.parse(backupString);
         
         // Restore from backup
-        await saveData(backupData);
-        return backupData;
+        const migratedBackup = migrateData(backupData);
+        await saveData(migratedBackup);
+        return migratedBackup;
       }
     } catch (backupError) {
       console.warn('Backup file also corrupted:', backupError);
@@ -153,7 +186,12 @@ export async function exportDrivesAsCSV() {
       'Weather',
       'Skills Practiced',
       'Supervisor Name',
-      'Supervisor Age'
+      'Supervisor Age',
+      'Supervisor License',
+      'Destination',
+      'Distance (km)',
+      'Average Speed (km/h)',
+      'Detection Source'
     ];
     
     // CSV rows
@@ -166,7 +204,12 @@ export async function exportDrivesAsCSV() {
       drive.weather || '',
       drive.skills || '',
       drive.supervisorName || '',
-      drive.supervisorAge || ''
+      drive.supervisorAge || '',
+      drive.supervisorLicense || '',
+      drive.destination || '',
+      drive.routeSummary?.distanceKm || '',
+      drive.routeSummary?.averageSpeedKmh || '',
+      drive.source || 'manual'
     ]);
     
     // Combine headers and rows

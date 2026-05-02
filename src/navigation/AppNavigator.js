@@ -2,7 +2,8 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
 
 // Screens
@@ -12,6 +13,7 @@ import LogDriveScreen from '../screens/LogDriveScreen';
 import DriveHistoryScreen from '../screens/DriveHistoryScreen';
 import ExportScreen from '../screens/ExportScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import SupervisorProfilesScreen from '../screens/SupervisorProfilesScreen';
 
 // Context
 import { useDriving } from '../contexts/DrivingContext';
@@ -29,15 +31,10 @@ function TabIcon({ children, focused, theme }) {
       width: 32,
       height: 32,
       backgroundColor: focused ? theme.colors.primary : 'transparent',
-      borderRadius: 16,
+      borderRadius: 8,
       marginBottom: 4,
     }}>
-      <Text style={{ 
-        fontSize: 18, 
-        color: focused ? theme.colors.text.inverse : theme.colors.text.light
-      }}>
-        {children}
-      </Text>
+      <Icon name={children} size={20} color={focused ? theme.colors.text.inverse : theme.colors.text.light} />
     </View>
   );
 }
@@ -54,19 +51,22 @@ function MainTabs() {
           
           switch (route.name) {
             case 'Dashboard':
-              iconName = '🏠';
+              iconName = 'view-dashboard-outline';
               break;
             case 'LogDrive':
-              iconName = '🚗';
+              iconName = 'car-clock';
               break;
             case 'DriveHistory':
-              iconName = '📝';
+              iconName = 'format-list-bulleted';
+              break;
+            case 'Supervisors':
+              iconName = 'account-supervisor-outline';
               break;
             case 'Settings':
-              iconName = '⚙️';
+              iconName = 'cog-outline';
               break;
             default:
-              iconName = '•';
+              iconName = 'circle-small';
           }
           
           return <TabIcon focused={focused} theme={theme}>{iconName}</TabIcon>;
@@ -133,6 +133,15 @@ function MainTabs() {
         options={{
           title: 'Drive History',
           tabBarLabel: 'History',
+          headerShown: false,
+        }}
+      />
+      <Tab.Screen
+        name="Supervisors"
+        component={SupervisorProfilesScreen}
+        options={{
+          title: 'Supervisors',
+          tabBarLabel: 'Supervisors',
           headerShown: false,
         }}
       />
