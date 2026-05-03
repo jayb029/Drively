@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightTheme, darkTheme } from '../utils/theme';
 import { logUserAction, logger } from '../utils/logger';
@@ -12,6 +12,10 @@ export const THEME_MODES = {
   DARK: 'dark',
   SYSTEM: 'system',
 };
+
+const normalizeColorScheme = (colorScheme) => (
+  colorScheme === 'dark' || colorScheme === 'light' ? colorScheme : null
+);
 
 const ThemeContext = createContext({
   theme: lightTheme,
@@ -27,30 +31,27 @@ const ThemeContext = createContext({
  */
 export function ThemeProvider({ children }) {
   const systemColorScheme = useColorScheme();
+  const [appearanceColorScheme, setAppearanceColorScheme] = useState(
+    normalizeColorScheme(Appearance.getColorScheme())
+  );
   const [themeMode, setThemeModeState] = useState(THEME_MODES.SYSTEM);
   const [isLoading, setIsLoading] = useState(true);
-  const [systemTheme, setSystemTheme] = useState(null);
 
-  // Get system color scheme using useColorScheme hook
+  // Keep a direct Appearance subscription because some native builds can lag
+  // behind the hook when the app starts in system theme mode.
   useEffect(() => {
-    const getSystemTheme = async () => {
-      try {
-        // Use useColorScheme as primary source (more reliable)
-        console.log('useColorScheme result:', systemColorScheme);
-        setSystemTheme(systemColorScheme);
-      } catch (error) {
-        console.warn('Failed to get system theme info:', error);
-        // Fallback to just using the system color scheme
-        setSystemTheme(systemColorScheme);
-      }
+    const updateAppearanceColorScheme = ({ colorScheme } = {}) => {
+      setAppearanceColorScheme(normalizeColorScheme(colorScheme ?? Appearance.getColorScheme()));
     };
 
-    getSystemTheme();
-  }, [systemColorScheme]);
+    updateAppearanceColorScheme();
+    const subscription = Appearance.addChangeListener(updateAppearanceColorScheme);
+
+    return () => subscription?.remove();
+  }, []);
 
   // Determine if dark mode should be active
-  // Use systemTheme if available, fallback to systemColorScheme
-  const effectiveSystemScheme = systemTheme || systemColorScheme;
+  const effectiveSystemScheme = appearanceColorScheme || normalizeColorScheme(systemColorScheme) || 'light';
   const isDark = themeMode === THEME_MODES.DARK || 
     (themeMode === THEME_MODES.SYSTEM && effectiveSystemScheme === 'dark');
 
@@ -62,12 +63,12 @@ export function ThemeProvider({ children }) {
     console.log('Theme state update:', {
       themeMode,
       systemColorScheme,
-      systemTheme,
+      appearanceColorScheme,
       effectiveSystemScheme,
       isDark,
       isLoading
     });
-  }, [themeMode, systemColorScheme, systemTheme, effectiveSystemScheme, isDark, isLoading]);
+  }, [themeMode, systemColorScheme, appearanceColorScheme, effectiveSystemScheme, isDark, isLoading]);
 
   /**
    * Load saved theme preference from AsyncStorage
@@ -103,13 +104,13 @@ export function ThemeProvider({ children }) {
     if (themeMode === THEME_MODES.SYSTEM) {
       console.log('System color scheme changed:', {
         useColorScheme: systemColorScheme,
-        systemTheme: systemTheme,
+        appearanceColorScheme,
         effective: effectiveSystemScheme
       });
       // Force a re-render when system color scheme changes
       // The isDark calculation will automatically pick up the new system value
     }
-  }, [systemColorScheme, systemTheme, themeMode, effectiveSystemScheme]);
+  }, [systemColorScheme, appearanceColorScheme, themeMode, effectiveSystemScheme]);
 
   /**
    * Update theme mode and persist to storage
@@ -138,7 +139,8 @@ export function ThemeProvider({ children }) {
     setThemeMode,
     isLoading,
     systemColorScheme, // Original useColorScheme result
-    systemTheme, // Processed system theme
+    systemTheme: appearanceColorScheme, // Backward-compatible processed system theme
+    appearanceColorScheme,
     effectiveSystemScheme, // The one actually being used
     // Material design theme for React Native Paper
     paperTheme: theme.materialTheme,
