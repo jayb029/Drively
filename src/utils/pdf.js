@@ -57,11 +57,20 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
 
   const requiredTotalHours = formatRequiredHours(goalHours);
   const requiredNightHours = formatRequiredHours(goalNightHours);
+  const hasMetTotalRequirement = totalHours >= goalHours;
+  const hasMetNightRequirement = totalNightHours >= goalNightHours;
+  const hasMetOfficialRequirements = hasMetTotalRequirement && hasMetNightRequirement;
+  const signatureModeLabel = omitSupervisorSignatures
+    ? 'Blank signature version'
+    : 'Pre-filled signature version';
+  const signatureModeDescription = omitSupervisorSignatures
+    ? 'Saved supervisor signatures are intentionally omitted. Use the blank lines below for physical signatures and dates.'
+    : 'Saved supervisor signatures are included where available. Date fields remain blank for the signer or reviewing agency.';
 
   const permitNumberHTML = driverInfo.permitNumber
     ? `
             <div>
-              <span class="field-label">Permit Number</span>
+              <span class="field-label">Permit/License Number</span>
               <div class="field-value">${escapeHTML(driverInfo.permitNumber)}</div>
             </div>`
     : '';
@@ -97,8 +106,8 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
         <div class="profile-signature-block">
           ${signatureToSVG(omitSupervisorSignatures ? null : profile.signature)}
           <div class="signature-fields">
-            <span class="signature-line-label">Signature</span>
-            <span class="signature-date-field">Date</span>
+            <span class="signature-line-label">${omitSupervisorSignatures ? 'Physical Signature' : 'Saved Signature'}</span>
+            <span class="signature-date-field">Date Signed</span>
           </div>
         </div>
       </div>
@@ -112,8 +121,8 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
         <div class="profile-signature-block">
           <div class="signature-empty"></div>
           <div class="signature-fields">
-            <span class="signature-line-label">Signature</span>
-            <span class="signature-date-field">Date</span>
+            <span class="signature-line-label">Physical Signature</span>
+            <span class="signature-date-field">Date Signed</span>
           </div>
         </div>
       </div>
@@ -183,6 +192,17 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
           .header p {
             color: #6b7280;
             margin: 5px 0 0 0;
+          }
+          .report-mode {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 3px 10px;
+            border: 1px solid #9ca3af;
+            color: #374151;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            background: #ffffff;
           }
           .summary-grid {
             display: grid;
@@ -337,12 +357,20 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             text-align: center;
           }
           .footer {
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 28px;
+            padding-top: 14px;
             border-top: 1px solid #9ca3af;
             text-align: center;
             color: #6b7280;
             font-size: 12px;
+            line-height: 1.35;
+            page-break-inside: avoid;
+          }
+          .personal-report .footer {
+            margin-top: 18px;
+            padding-top: 12px;
+            color: #4b5563;
+            border-top-color: #d1d5db;
           }
           .signature-section {
             margin-top: 40px;
@@ -363,7 +391,7 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             font-size: 14px;
           }
           .profile-agreement {
-            margin-top: 40px;
+            margin-top: 30px;
             page-break-inside: avoid;
           }
           .profile-agreement h3 {
@@ -383,6 +411,25 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             font-size: 12px;
             line-height: 1.4;
             font-weight: 600;
+          }
+          .signature-mode-note {
+            margin: 0 0 12px 0;
+            padding: 8px 10px;
+            border: 1px solid #d1d5db;
+            background: #f9fafb;
+            color: #374151;
+            font-size: 12px;
+            line-height: 1.35;
+          }
+          .requirement-status {
+            margin: 0 0 14px 0;
+            padding: 9px 10px;
+            border: 1.5px solid ${hasMetOfficialRequirements ? '#059669' : '#b45309'};
+            background: ${hasMetOfficialRequirements ? '#ecfdf5' : '#fffbeb'};
+            color: ${hasMetOfficialRequirements ? '#065f46' : '#92400e'};
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
           }
           .master-certification {
             margin-top: 22px;
@@ -408,16 +455,17 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
           }
           .master-signature-grid {
             display: grid;
-            grid-template-columns: 1fr 120px;
-            gap: 18px;
-            margin-top: 28px;
+            grid-template-columns: 1fr 140px;
+            gap: 22px;
+            margin-top: 34px;
             font-size: 11px;
-            color: #6b7280;
+            color: #4b5563;
           }
           .master-signature-line,
           .master-date-line {
             border-top: 1.5px solid #111827;
-            padding-top: 4px;
+            padding-top: 5px;
+            min-height: 18px;
           }
           .master-date-line {
             text-align: center;
@@ -444,7 +492,7 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             gap: 14px;
             border: 1px solid #d1d5db;
             border-radius: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             overflow: hidden;
             page-break-inside: avoid;
           }
@@ -466,38 +514,41 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
           }
           .profile-signature-block {
             flex: 1;
-            padding: 8px 12px 6px 12px;
+            padding: 10px 12px 8px 12px;
             background: #ffffff;
-            min-height: 94px;
+            min-height: 104px;
           }
           .saved-signature {
             width: 100%;
-            height: 62px;
+            height: 64px;
             display: block;
           }
           .signature-empty {
-            height: 62px;
+            height: 64px;
           }
           .signature-fields {
             display: grid;
-            grid-template-columns: 1fr 96px;
-            gap: 14px;
+            grid-template-columns: 1fr 116px;
+            gap: 18px;
             align-items: end;
-            margin-top: 4px;
+            margin-top: 8px;
             font-size: 11px;
-            color: #6b7280;
+            color: #4b5563;
           }
           .signature-line-label,
           .signature-date-field {
             border-top: 1px solid #111827;
-            padding-top: 2px;
+            padding-top: 4px;
+            min-height: 17px;
           }
           .signature-date-field {
             text-align: center;
           }
           .footer-branding {
             font-size: 12px;
-            color: #6b7280;
+            color: #374151;
+            font-weight: 700;
+            margin: 0 0 3px 0;
           }
           .footer-branding.official {
             font-size: 10px;
@@ -510,6 +561,9 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             color: #4b5563;
             font-size: 11px;
             line-height: 1.4;
+          }
+          .footer p {
+            margin: 3px 0;
           }
           @media print {
             body { 
@@ -545,10 +599,11 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
           }
         </style>
       </head>
-      <body>
+      <body class="${isOfficial ? 'official-report' : 'personal-report'}">
         <div class="header">
           <h1>${isOfficial ? 'Driving Practice Log' : '🛣️ Driving Log Report'}</h1>
           <p>Generated on ${currentDate}</p>
+          ${isOfficial ? `<div class="report-mode">${signatureModeLabel}</div>` : ''}
         </div>
 
         ${isOfficial ? `
@@ -669,6 +724,13 @@ ${permitNumberHTML}
         ${isOfficial ? `
         <div class="profile-agreement">
           <h3>Supervisor Agreement</h3>
+          <p class="signature-mode-note"><strong>${signatureModeLabel}.</strong> ${signatureModeDescription}</p>
+          <p class="requirement-status">
+            ${hasMetOfficialRequirements
+              ? 'Logged hours meet or exceed the stated total and night driving requirements.'
+              : `Logged hours are currently ${totalHours.toFixed(1)} of ${goalHours} total hours and ${totalNightHours.toFixed(1)} of ${goalNightHours} night hours. This report documents progress to date and does not certify completion of unmet requirements.`
+            }
+          </p>
           <p class="agreement-text">
             ${omitSupervisorSignatures
               ? 'I agree and certify under penalty of perjury that the driving practice recorded in this log is accurate to the best of my knowledge, and that I supervised or verified the applicable entries associated with my profile. The signature line below is left blank for physical signature.'
@@ -685,12 +747,14 @@ ${permitNumberHTML}
           <div class="master-certification">
             <h3>Primary Parent/Guardian Certification</h3>
             <p class="agreement-text">
-              I certify that the applicant has completed at least <span class="certification-fill-line">${escapeHTML(requiredTotalHours)}</span> total hours,
-              including at least <span class="certification-fill-line">${escapeHTML(requiredNightHours)}</span> hours of night driving.
+              ${hasMetOfficialRequirements
+                ? `I certify that the applicant has completed at least <span class="certification-fill-line">${escapeHTML(requiredTotalHours)}</span> total hours, including at least <span class="certification-fill-line">${escapeHTML(requiredNightHours)}</span> hours of night driving.`
+                : `I acknowledge that this log records <span class="certification-fill-line">${escapeHTML(totalHours.toFixed(1))}</span> total hours, including <span class="certification-fill-line">${escapeHTML(totalNightHours.toFixed(1))}</span> hours of night driving, toward requirements of <span class="certification-fill-line">${escapeHTML(requiredTotalHours)}</span> total and <span class="certification-fill-line">${escapeHTML(requiredNightHours)}</span> night hours.`
+              }
             </p>
             <div class="master-signature-grid">
               <div class="master-signature-line">Primary Parent/Guardian Signature</div>
-              <div class="master-date-line">Date</div>
+              <div class="master-date-line">Date Signed</div>
             </div>
           </div>
         </div>
@@ -701,7 +765,7 @@ ${permitNumberHTML}
           <p>This report contains ${drives.length} driving sessions totaling ${totalHours.toFixed(1)} hours</p>
           ${isOfficial ? `
           <p class="footer-disclaimer">
-            This log is a personal record of supervised driving practice and is intended to meet Kansas Department of Revenue requirements.
+            This log is a personal record of supervised driving practice formatted for Kansas Department of Revenue review.
           </p>
           ` : ''}
         </div>
@@ -721,7 +785,8 @@ ${permitNumberHTML}
 export const generatePDFReport = async (data, filename, isOfficial = false, options = {}) => {
   try {
     const htmlContent = generateDrivingReportHTML(data, isOfficial, options);
-    const suffix = isOfficial ? '_official' : '';
+    const signatureSuffix = options.omitSupervisorSignatures ? '_blank_signatures' : '_prefilled_signatures';
+    const suffix = isOfficial ? `_official${signatureSuffix}` : '';
     const defaultFilename = `drively_report${suffix}_${new Date().toISOString().split('T')[0]}.pdf`;
     const finalFilename = filename || defaultFilename;
     

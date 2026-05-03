@@ -9,6 +9,48 @@ const MAIN_DATA_FILE = `${DATA_DIR}data.json`;
 const BACKUP_DATA_FILE = `${DATA_DIR}backup.json`;
 const WEB_DATA_KEY = 'drively.data.v1';
 
+function isDefaultUserValue(key, value) {
+  return DEFAULT_DATA.user[key] === value || value === undefined || value === null || value === '';
+}
+
+function dedupeByIdentity(items, identityBuilder) {
+  if (!Array.isArray(items)) return [];
+
+  const seen = new Map();
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const key = item.id || identityBuilder(item);
+    if (!key) return;
+
+    const current = seen.get(key);
+    if (!current) {
+      seen.set(key, item);
+      return;
+    }
+
+    const currentUpdated = Date.parse(current.updatedAt || current.createdAt || current.date || 0) || 0;
+    const itemUpdated = Date.parse(item.updatedAt || item.createdAt || item.date || 0) || 0;
+    seen.set(key, itemUpdated >= currentUpdated ? { ...current, ...item } : { ...item, ...current });
+  });
+
+  return Array.from(seen.values());
+}
+
+function recalculateUserProgress(user, drives) {
+  const completedDayHours = drives
+    .filter((drive) => !drive.isNightDrive)
+    .reduce((sum, drive) => sum + ((Number(drive.duration) || 0) / 60), 0);
+  const completedNightHours = drives
+    .filter((drive) => drive.isNightDrive)
+    .reduce((sum, drive) => sum + ((Number(drive.duration) || 0) / 60), 0);
+
+  return {
+    ...user,
+    completedDayHours,
+    completedNightHours,
+  };
+}
+
 /**
  * Default data structure for a new user
  */
@@ -53,16 +95,35 @@ const DEFAULT_DATA = {
 };
 
 function migrateData(data) {
+  const drives = dedupeByIdentity(data.drives, (drive) => [
+    drive.date,
+    drive.startTime,
+    drive.endTime,
+    drive.duration,
+    drive.destination,
+  ].filter(Boolean).join('|'));
+  const supervisorProfiles = dedupeByIdentity(data.supervisorProfiles, (profile) => [
+    profile.name,
+    profile.dateOfBirth || profile.birthDate || profile.dob,
+    profile.licenseNumber,
+  ].filter(Boolean).join('|'));
+  const detectedEvents = dedupeByIdentity(data.detectedEvents, (event) => [
+    event.startedAt,
+    event.endedAt,
+    event.startTime,
+    event.endTime,
+  ].filter(Boolean).join('|'));
+
   const merged = {
     ...DEFAULT_DATA,
     ...data,
-    user: {
+    user: recalculateUserProgress({
       ...DEFAULT_DATA.user,
       ...(data.user || {}),
-    },
-    supervisorProfiles: Array.isArray(data.supervisorProfiles) ? data.supervisorProfiles : [],
-    drives: Array.isArray(data.drives) ? data.drives : [],
-    detectedEvents: Array.isArray(data.detectedEvents) ? data.detectedEvents : [],
+    }, drives),
+    supervisorProfiles,
+    drives,
+    detectedEvents,
     streaks: {
       ...DEFAULT_DATA.streaks,
       ...(data.streaks || {}),
@@ -75,6 +136,24 @@ function migrateData(data) {
   };
 
   return merged;
+}
+
+function hasMeaningfulData(data) {
+  return !!(
+    data?.drives?.length ||
+    data?.supervisorProfiles?.length ||
+    data?.detectedEvents?.length ||
+    data?.user?.onboardingComplete ||
+    !isDefaultUserValue('driverName', data?.user?.driverName) ||
+    !isDefaultUserValue('dateOfBirth', data?.user?.dateOfBirth) ||
+    !isDefaultUserValue('permitNumber', data?.user?.permitNumber)
+  );
+}
+
+function pickRestoredData(primaryData, backupData) {
+  if (!backupData) return primaryData;
+  if (!hasMeaningfulData(primaryData) && hasMeaningfulData(backupData)) return backupData;
+  return primaryData;
 }
 
 /**
@@ -130,7 +209,20 @@ export async function loadData() {
       throw new Error('Invalid data structure');
     }
     
-    return migrateData(data);
+    let backupData = null;
+    try {
+      const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
+      if (backupFileInfo.exists) {
+        const backupString = await FileSystem.readAsStringAsync(BACKUP_DATA_FILE);
+        backupData = JSON.parse(backupString);
+      }
+    } catch (backupError) {
+      console.warn('Backup data unavailable during restore check:', backupError);
+    }
+
+    const migratedData = migrateData(pickRestoredData(data, backupData));
+    await saveData(migratedData);
+    return migratedData;
   } catch (error) {
     console.warn('Main data file corrupted, trying backup:', error);
     

@@ -15,6 +15,7 @@ import * as Location from 'expo-location';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { SensitiveText } from '../components/SensitiveInfo';
 import { logError, logUserAction } from '../utils/logger';
 import {
   formatDateForDisplay,
@@ -435,12 +436,15 @@ export default function LogDriveScreen({ navigation }) {
                   ]}
                   onPress={() => setSelectedSupervisorId(profile.id)}
                 >
-                  <Text style={[
-                    styles.choiceText,
-                    selectedSupervisorId === profile.id && styles.choiceTextSelected,
-                  ]}>
-                    {profile.name}
-                  </Text>
+                  <SensitiveText
+                    value={profile.name}
+                    textStyle={[
+                      styles.choiceText,
+                      selectedSupervisorId === profile.id && styles.choiceTextSelected,
+                    ]}
+                    revealLabel="Supervisor name"
+                    numberOfLines={1}
+                  />
                 </TouchableOpacity>
               ))}
               <TouchableOpacity

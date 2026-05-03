@@ -586,16 +586,16 @@ export default function ExportScreen({ navigation }) {
                       value={isOfficialPDF}
                       onValueChange={setIsOfficialPDF}
                       trackColor={{ 
-                        false: theme.colors.border.medium, 
-                        true: theme.colors.secondary 
+                        false: theme.colors.switchControl.trackOff, 
+                        true: theme.colors.switchControl.trackOn 
                       }}
-                      thumbColor={isOfficialPDF ? theme.colors.white : theme.colors.surface}
+                      thumbColor={isOfficialPDF ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
                     />
                     <View style={styles.checkboxLabel}>
                       <Text style={styles.checkboxTitle}>Official/DMV Format</Text>
                       <Text style={styles.checkboxDescription}>
                         {isOfficialPDF 
-                          ? 'Clean format without emojis, includes signature section, removes streak data' 
+                          ? 'Clean format without emojis, includes DMV-style certification and signature sections'
                           : 'Personal format with emojis, streaks and progress tracking'
                         }
                       </Text>
@@ -608,15 +608,15 @@ export default function ExportScreen({ navigation }) {
                         value={leaveSupervisorSignatureBlank}
                         onValueChange={setLeaveSupervisorSignatureBlank}
                         trackColor={{ 
-                          false: theme.colors.border.medium, 
-                          true: theme.colors.secondary 
+                          false: theme.colors.switchControl.trackOff, 
+                          true: theme.colors.switchControl.trackOn 
                         }}
-                        thumbColor={leaveSupervisorSignatureBlank ? theme.colors.white : theme.colors.surface}
+                        thumbColor={leaveSupervisorSignatureBlank ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
                       />
                       <View style={styles.checkboxLabel}>
-                        <Text style={styles.checkboxTitle}>Leave signature blank</Text>
+                        <Text style={styles.checkboxTitle}>Blank signature version</Text>
                         <Text style={styles.checkboxDescription}>
-                          Keep saved signatures in the app, but export blank signature lines for supervisors to sign later.
+                          Keep saved signatures in the app, but export physical signature and date lines for supervisors to sign later. Turn off to export saved signatures.
                         </Text>
                       </View>
                     </View>

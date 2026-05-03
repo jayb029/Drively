@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,17 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { requestNotificationPermission, requestStoragePermission } from '../utils/permissions';
+import {
+  formatDateOfBirthFromDate,
+  getDateOfBirthDate,
+  getMinimumDateOfBirthDate,
+} from '../utils/time';
 
 const LICENSE_TYPES = [
   {
@@ -62,9 +69,36 @@ const GOAL_PRESETS = [
   },
 ];
 
+const TEMPERATURE_OPTIONS = [
+  {
+    id: 'metric',
+    title: 'Celsius',
+    description: 'Weather in °C',
+  },
+  {
+    id: 'imperial',
+    title: 'Fahrenheit',
+    description: 'Weather in °F',
+  },
+];
+
+const DISTANCE_OPTIONS = [
+  {
+    id: 'metric',
+    title: 'Kilometers',
+    description: 'Distances in km and speeds in km/h',
+  },
+  {
+    id: 'imperial',
+    title: 'Miles',
+    description: 'Distances in mi and speeds in mph',
+  },
+];
+
 export default function OnboardingScreen({ navigation }) {
   const { completeOnboarding, updateSettings } = useDriving();
   const { theme, isDark } = useTheme();
+  const scrollViewRef = useRef(null);
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
   const [customGoal, setCustomGoal] = useState(false);
@@ -81,6 +115,14 @@ export default function OnboardingScreen({ navigation }) {
     borderColor: theme.colors.primary,
     backgroundColor: isDark ? theme.colors.surfaceSecondary : '#eff6ff',
   };
+
+  useEffect(() => {
+    const animationFrame = requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    });
+
+    return () => cancelAnimationFrame(animationFrame);
+  }, [step]);
 
   const parseGoalValues = () => {
     const parsedDay = parseFloat(dayHours);
@@ -142,6 +184,42 @@ export default function OnboardingScreen({ navigation }) {
 
   const handleDriverInfoContinue = () => {
     setStep(4);
+  };
+
+  const renderUnitOption = ({ option, isSelected, onPress }) => (
+    <TouchableOpacity
+      key={option.id}
+      activeOpacity={1}
+      style={[
+        styles.optionCard,
+        styles.unitOptionCard,
+        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
+        isSelected && [styles.selectedOption, selectedOptionStyle],
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.unitOptionContent}>
+        <Text style={[styles.optionTitle, styles.unitOptionTitle, { color: theme.colors.text.primary }]}>
+          {option.title}
+        </Text>
+        <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
+          {option.description}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const openDateOfBirthPicker = () => {
+    DateTimePickerAndroid.open({
+      value: getDateOfBirthDate(dateOfBirth) || new Date(1980, 0, 1),
+      mode: 'date',
+      minimumDate: getMinimumDateOfBirthDate(),
+      maximumDate: new Date(),
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) return;
+        setDateOfBirth(formatDateOfBirthFromDate(selectedDate));
+      },
+    });
   };
 
   const handleComplete = async () => {
@@ -404,25 +482,31 @@ export default function OnboardingScreen({ navigation }) {
 
         <View style={styles.formGroup}>
           <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Date of Birth</Text>
-          <TextInput
+          <TouchableOpacity
             style={[
-              styles.textInput,
+              styles.datePickerButton,
               {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border.light,
-                color: theme.colors.text.primary,
+                backgroundColor: theme.colors.surfaceSecondary,
+                borderColor: theme.colors.border.medium,
               },
             ]}
-            value={dateOfBirth}
-            onChangeText={setDateOfBirth}
-            placeholder="MM/DD/YYYY"
-            placeholderTextColor={theme.colors.text.light}
-            keyboardType="numbers-and-punctuation"
-          />
+            onPress={openDateOfBirthPicker}
+          >
+            <Text
+              style={[
+                styles.datePickerText,
+                { color: theme.colors.text.primary },
+                !dateOfBirth && { color: theme.colors.text.light },
+              ]}
+            >
+              {dateOfBirth || 'Date of birth'}
+            </Text>
+            <Icon name="calendar-month-outline" size={20} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Permit Number</Text>
+          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Permit/License Number</Text>
           <TextInput
             style={[
               styles.textInput,
@@ -468,76 +552,20 @@ export default function OnboardingScreen({ navigation }) {
 
       <Text style={[styles.optionGroupTitle, { color: theme.colors.text.primary }]}>Temperature</Text>
       <View style={styles.optionsContainer}>
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            temperatureUnit === 'metric' && [styles.selectedOption, selectedOptionStyle],
-          ]}
-          onPress={() => setTemperatureUnit('metric')}
-        >
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Celsius</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Example: 20°C
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            temperatureUnit === 'imperial' && [styles.selectedOption, selectedOptionStyle],
-          ]}
-          onPress={() => setTemperatureUnit('imperial')}
-        >
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Fahrenheit</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Example: 68°F
-            </Text>
-          </View>
-        </TouchableOpacity>
+        {TEMPERATURE_OPTIONS.map((option) => renderUnitOption({
+          option,
+          isSelected: temperatureUnit === option.id,
+          onPress: () => setTemperatureUnit(option.id),
+        }))}
       </View>
 
       <Text style={[styles.optionGroupTitle, { color: theme.colors.text.primary }]}>Distance and Speed</Text>
       <View style={styles.optionsContainer}>
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            distanceUnit === 'metric' && [styles.selectedOption, selectedOptionStyle],
-          ]}
-          onPress={() => setDistanceUnit('metric')}
-        >
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Kilometers</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Distances in km and speeds in km/h
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            distanceUnit === 'imperial' && [styles.selectedOption, selectedOptionStyle],
-          ]}
-          onPress={() => setDistanceUnit('imperial')}
-        >
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Miles</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Distances in mi and speeds in mph
-            </Text>
-          </View>
-        </TouchableOpacity>
+        {DISTANCE_OPTIONS.map((option) => renderUnitOption({
+          option,
+          isSelected: distanceUnit === option.id,
+          onPress: () => setDistanceUnit(option.id),
+        }))}
       </View>
 
       <View style={styles.buttonRow}>
@@ -627,7 +655,7 @@ export default function OnboardingScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={[styles.logo, { color: theme.colors.primary }]}>Drively</Text>
           <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>Your driving companion</Text>
@@ -651,6 +679,13 @@ export default function OnboardingScreen({ navigation }) {
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
         {step === 5 && renderStep5()}
+
+        <View style={styles.footer}>
+          <Text style={[styles.footerBrand, { color: theme.colors.text.secondary }]}>Drively</Text>
+          <Text style={[styles.footerTagline, { color: theme.colors.text.light }]}>
+            Small trips, big progress.
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -700,6 +735,21 @@ const styles = StyleSheet.create({
   stepContainer: {
     flex: 1,
   },
+  footer: {
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 8,
+    gap: 4,
+  },
+  footerBrand: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  footerTagline: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   stepTitle: {
     fontSize: 28,
     fontWeight: '700',
@@ -729,6 +779,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  unitOptionCard: {
+    minHeight: 104,
+    justifyContent: 'center',
+  },
+  unitOptionContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   selectedOption: {
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -742,6 +801,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     marginBottom: 6,
+  },
+  unitOptionTitle: {
+    marginBottom: 0,
   },
   optionDescription: {
     fontSize: 15,
@@ -789,6 +851,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     fontSize: 16,
+  },
+  datePickerButton: {
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 15,
   },
   goalInputRow: {
     flexDirection: 'row',

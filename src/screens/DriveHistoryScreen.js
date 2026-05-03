@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { SensitiveText } from '../components/SensitiveInfo';
 import { 
   formatDuration, 
   formatDateForDisplay, 
@@ -94,10 +95,14 @@ export default function DriveHistoryScreen({ navigation }) {
             <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>Skills: {drive.skills}</Text>
           )}
           {drive.supervisorName && (
-            <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>
-              Supervisor: {drive.supervisorName}
-              {drive.supervisorAge && ` (${drive.supervisorAge})`}
-            </Text>
+            <View style={styles.sensitiveDetailRow}>
+              <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>Supervisor: </Text>
+              <SensitiveText
+                value={`${drive.supervisorName}${drive.supervisorAge ? ` (${drive.supervisorAge})` : ''}`}
+                textStyle={[styles.detailText, { color: theme.colors.text.secondary }]}
+                revealLabel="Drive supervisor"
+              />
+            </View>
           )}
           {drive.destination && (
             <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>Destination: {drive.destination}</Text>
@@ -445,6 +450,11 @@ const styles = StyleSheet.create({
   driveDetails: {
     marginBottom: 12,
     gap: 4,
+  },
+  sensitiveDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   detailText: {
     fontSize: 12,

@@ -69,6 +69,13 @@ export const lightColors = {
     medium: '#cbd5e1',
     dark: '#94a3b8',
   },
+
+  switchControl: {
+    trackOff: '#cbd5e1',
+    trackOn: '#93c5fd',
+    thumbOff: '#ffffff',
+    thumbOn: '#1e40af',
+  },
   
   // Card Colors
   card: {
@@ -105,6 +112,13 @@ export const darkColors = {
     light: '#334155',
     medium: '#475569',
     dark: '#64748b',
+  },
+
+  switchControl: {
+    trackOff: '#334155',
+    trackOn: '#2563eb',
+    thumbOff: '#cbd5e1',
+    thumbOn: '#ffffff',
   },
   
   // Card Colors

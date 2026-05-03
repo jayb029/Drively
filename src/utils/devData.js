@@ -66,14 +66,15 @@ function makeRoutePreview(index) {
   }));
 }
 
-function makeDrive(index) {
+function makeDrive(index, supervisor, forceNightDrive = null) {
   const driveDate = new Date();
   driveDate.setDate(driveDate.getDate() - index);
 
-  const isNightDrive = index % 4 === 0;
+  const isNightDrive = forceNightDrive ?? index % 4 === 0;
   const duration = [35, 48, 62, 27, 75, 41, 54, 33, 68, 46, 58, 39][index % 12];
   const startMinutes = isNightDrive ? 19 * 60 + (index % 3) * 20 : 8 * 60 + (index % 7) * 55;
   const distanceKm = Number((duration * (isNightDrive ? 0.62 : 0.78)).toFixed(1));
+  const assignedSupervisor = supervisor || supervisors[index % supervisors.length];
 
   return {
     id: `dev-drive-${index + 1}`,
@@ -85,11 +86,11 @@ function makeDrive(index) {
     weather: weatherOptions[index % weatherOptions.length],
     weatherData: null,
     skills: skillSets[index % skillSets.length],
-    supervisorId: supervisors[index % supervisors.length].id,
-    supervisorName: supervisors[index % supervisors.length].name,
-    supervisorDateOfBirth: supervisors[index % supervisors.length].dateOfBirth,
-    supervisorAge: supervisors[index % supervisors.length].age,
-    supervisorLicense: supervisors[index % supervisors.length].licenseNumber,
+    supervisorId: assignedSupervisor.id,
+    supervisorName: assignedSupervisor.name,
+    supervisorDateOfBirth: assignedSupervisor.dateOfBirth || assignedSupervisor.birthDate || assignedSupervisor.dob || null,
+    supervisorAge: assignedSupervisor.age ?? null,
+    supervisorLicense: assignedSupervisor.licenseNumber || null,
     destination: destinations[index % destinations.length],
     source: index % 9 === 0 ? 'detected' : 'manual',
     routeSummary: {
@@ -102,8 +103,53 @@ function makeDrive(index) {
   };
 }
 
-export function createDevDrivingData(currentSettings = {}) {
-  const drives = Array.from({ length: 24 }, (_, index) => makeDrive(index)).reverse();
+function sumHours(drives, isNightDrive) {
+  return drives
+    .filter((drive) => Boolean(drive.isNightDrive) === isNightDrive)
+    .reduce((sum, drive) => sum + (Number(drive.duration) || 0) / 60, 0);
+}
+
+function makeMissingGoalDrives(existingDrives, availableSupervisors, user = {}) {
+  const existingTotalHours = sumHours(existingDrives, false) + sumHours(existingDrives, true);
+  const existingNightHours = sumHours(existingDrives, true);
+  const totalGoalHours = Number(user.goalDayHours) || 50;
+  const nightGoalHours = Number(user.goalNightHours) || 10;
+  const missingNightHours = Math.max(nightGoalHours - existingNightHours, 0);
+  const missingTotalHours = Math.max(totalGoalHours - existingTotalHours, 0);
+  const missingDayHours = Math.max(missingTotalHours - missingNightHours, 0);
+  const drives = [];
+  let index = existingDrives.length;
+
+  const addDrivesForHours = (targetHours, isNightDrive) => {
+    let addedHours = 0;
+
+    while (addedHours < targetHours && drives.length < 80) {
+      const supervisor = availableSupervisors[index % availableSupervisors.length];
+      const drive = makeDrive(index, supervisor, isNightDrive);
+      drives.push(drive);
+      addedHours += drive.duration / 60;
+      index += 1;
+    }
+  };
+
+  addDrivesForHours(missingDayHours, false);
+  addDrivesForHours(missingNightHours, true);
+
+  return drives;
+}
+
+export function createDevDrivingData(currentData = {}) {
+  const currentUser = currentData.user || {};
+  const currentSettings = currentData.settings || currentData || {};
+  const existingDrives = Array.isArray(currentData.drives) ? currentData.drives : [];
+  const existingSupervisors = Array.isArray(currentData.supervisorProfiles) ? currentData.supervisorProfiles : [];
+  const supervisorProfiles = existingSupervisors.length > 0
+    ? existingSupervisors
+    : supervisors.map((supervisor) => ({ ...supervisor }));
+  const existingDriveIds = new Set(existingDrives.map((drive) => drive.id));
+  const missingDrives = makeMissingGoalDrives(existingDrives, supervisorProfiles, currentUser)
+    .filter((drive) => !existingDriveIds.has(drive.id));
+  const drives = [...existingDrives, ...missingDrives];
   const settings = {
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
@@ -117,45 +163,48 @@ export function createDevDrivingData(currentSettings = {}) {
     storagePermissionStatus: null,
     exportDirectoryUri: null,
     ...currentSettings,
-    driveDetectionEnabled: false,
+    driveDetectionEnabled: currentSettings.driveDetectionEnabled ?? false,
   };
-  const completedDayHours = drives
-    .filter((drive) => !drive.isNightDrive)
-    .reduce((sum, drive) => sum + drive.duration / 60, 0);
-  const completedNightHours = drives
-    .filter((drive) => drive.isNightDrive)
-    .reduce((sum, drive) => sum + drive.duration / 60, 0);
-  const latestDrive = drives[drives.length - 1];
+  const completedDayHours = sumHours(drives, false);
+  const completedNightHours = sumHours(drives, true);
+  const latestDrive = drives.reduce((latest, drive) => {
+    if (!latest) return drive;
+    return new Date(drive.date) > new Date(latest.date) ? drive : latest;
+  }, null);
 
   return {
     user: {
-      licenseType: 'learners',
-      licenseDate: '2026-01-15',
-      goalDayHours: 50,
-      goalNightHours: 10,
+      ...currentUser,
+      licenseType: currentUser.licenseType ?? 'learners',
+      licenseDate: currentUser.licenseDate ?? '2026-01-15',
+      goalDayHours: currentUser.goalDayHours ?? 50,
+      goalNightHours: currentUser.goalNightHours ?? 10,
       completedDayHours,
       completedNightHours,
-      onboardingComplete: true,
+      onboardingComplete: currentUser.onboardingComplete ?? true,
     },
-    supervisorProfiles: supervisors.map((supervisor) => ({ ...supervisor })),
+    supervisorProfiles,
     drives,
-    detectedEvents: [
-      {
-        id: 'dev-detected-1',
-        detectedAt: new Date().toISOString(),
-        speedKmh: 46,
-        latitude: 41.8781,
-        longitude: -87.6298,
-        accuracy: 18,
-        status: 'new',
-      },
-    ],
+    detectedEvents: Array.isArray(currentData.detectedEvents) && currentData.detectedEvents.length > 0
+      ? currentData.detectedEvents
+      : [
+        {
+          id: 'dev-detected-1',
+          detectedAt: new Date().toISOString(),
+          speedKmh: 46,
+          latitude: 41.8781,
+          longitude: -87.6298,
+          accuracy: 18,
+          status: 'new',
+        },
+      ],
     streaks: {
+      ...(currentData.streaks || {}),
       current: calculateCurrentStreak(drives),
       longest: calculateLongestStreak(drives),
       lastDriveDate: latestDrive?.date || null,
-      freezeDaysUsed: 1,
-      freezeDaysThisMonth: 1,
+      freezeDaysUsed: currentData.streaks?.freezeDaysUsed ?? 1,
+      freezeDaysThisMonth: currentData.streaks?.freezeDaysThisMonth ?? 1,
       lastFreezeReset: formatDateForStorage(),
     },
     settings,

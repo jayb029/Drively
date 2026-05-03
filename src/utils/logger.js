@@ -5,6 +5,18 @@ const LOG_FILE = `${LOGS_DIR}debug.log`;
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB max log file size
 const LOG_RETENTION_DAYS = 2;
 
+async function appendLogLine(logLine) {
+  const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
+  const existingContent = fileInfo.exists ? await FileSystem.readAsStringAsync(LOG_FILE) : '';
+  await FileSystem.writeAsStringAsync(LOG_FILE, `${existingContent}${logLine}`);
+}
+
+function getModifiedDate(modificationTime) {
+  if (!modificationTime) return null;
+  const timestampMs = modificationTime < 10000000000 ? modificationTime * 1000 : modificationTime;
+  return new Date(timestampMs);
+}
+
 /**
  * Log levels for filtering and formatting
  */
@@ -104,6 +116,8 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
     );
 
     try {
+      await ensureLogsDirectoryExists();
+
       const fileInfo = await Promise.race([
         FileSystem.getInfoAsync(LOG_FILE),
         timeoutPromise
@@ -120,7 +134,7 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
 
       // Append to log file (with timeout)
       await Promise.race([
-        FileSystem.writeAsStringAsync(LOG_FILE, logLine, { append: true }),
+        appendLogLine(logLine),
         new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Write timeout')), 1000)
         )
@@ -265,6 +279,8 @@ async function rotateLogs() {
  */
 export async function getRecentLogs(lines = 100, level = null) {
   try {
+    await ensureLogsDirectoryExists();
+
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
     if (!fileInfo.exists) {
       return [];
@@ -294,7 +310,7 @@ export async function getRecentLogs(lines = 100, level = null) {
 export async function exportLogs() {
   try {
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
-    if (!fileInfo.exists) {
+    if (!fileInfo.exists || fileInfo.size === 0) {
       throw new Error('No log file found');
     }
 
@@ -302,6 +318,7 @@ export async function exportLogs() {
       uri: LOG_FILE,
       size: fileInfo.size,
       modifiedTime: fileInfo.modificationTime,
+      sizeFormatted: formatFileSize(fileInfo.size),
     };
   } catch (error) {
     console.error('Failed to export logs:', error);
@@ -318,8 +335,6 @@ export async function clearLogs() {
     if (fileInfo.exists) {
       await FileSystem.deleteAsync(LOG_FILE);
     }
-    
-    await log('All logs cleared manually', LOG_LEVELS.INFO, 'LOGGER');
   } catch (error) {
     console.error('Failed to clear logs:', error);
     throw error;
@@ -331,13 +346,16 @@ export async function clearLogs() {
  */
 export async function getLogStats() {
   try {
+    await ensureLogsDirectoryExists();
+
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
-    if (!fileInfo.exists) {
+    if (!fileInfo.exists || fileInfo.size === 0) {
       return {
         exists: false,
         size: 0,
         lineCount: 0,
         lastModified: null,
+        sizeFormatted: formatFileSize(0),
       };
     }
 
@@ -348,7 +366,7 @@ export async function getLogStats() {
       exists: true,
       size: fileInfo.size,
       lineCount: lines.length,
-      lastModified: new Date(fileInfo.modificationTime),
+      lastModified: getModifiedDate(fileInfo.modificationTime),
       sizeFormatted: formatFileSize(fileInfo.size),
     };
   } catch (error) {

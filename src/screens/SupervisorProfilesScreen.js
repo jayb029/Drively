@@ -16,6 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { SensitiveBlock, SensitiveText } from '../components/SensitiveInfo';
 import {
   calculateAge,
   formatDateOfBirthFromDate,
@@ -346,7 +347,13 @@ export default function SupervisorProfilesScreen() {
 
             {signature && (
               <View style={styles.savedSignatureBlock}>
-                <SignaturePreview signature={signature} styles={styles} theme={theme} />
+                <SensitiveBlock
+                  containerStyle={styles.signaturePrivacyButton}
+                  hiddenStyle={styles.signaturePreview}
+                  revealLabel="Supervisor signature"
+                >
+                  <SignaturePreview signature={signature} styles={styles} theme={theme} />
+                </SensitiveBlock>
                 <TouchableOpacity style={styles.removeSignatureButton} onPress={removeSavedSignature}>
                   <Text style={styles.removeSignatureText}>Remove signature</Text>
                 </TouchableOpacity>
@@ -376,16 +383,23 @@ export default function SupervisorProfilesScreen() {
               supervisorProfiles.map((profile) => (
                 <View key={profile.id} style={styles.profileCard}>
                   <View style={styles.profileMain}>
-                    <Text style={styles.profileName}>{profile.name}</Text>
-                    <Text style={styles.profileMeta}>
-                      {[
+                    <SensitiveText
+                      value={profile.name}
+                      textStyle={styles.profileName}
+                      revealLabel="Supervisor name"
+                      numberOfLines={1}
+                    />
+                    <SensitiveText
+                      value={[
                         profile.relationship,
                         (profile.dateOfBirth || profile.birthDate || profile.dob) ? `DOB ${profile.dateOfBirth || profile.birthDate || profile.dob}` : null,
                         getProfileAge(profile) ? `${getProfileAge(profile)} years old` : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
-                    </Text>
+                      textStyle={styles.profileMeta}
+                      revealLabel="Supervisor details"
+                    />
                     <Text style={styles.profileMeta}>
                       {profile.signature ? 'Signature saved' : 'Signature missing'}
                     </Text>
@@ -617,6 +631,9 @@ function createStyles(theme) {
       borderRadius: 8,
       backgroundColor: theme.colors.surfaceSecondary,
       overflow: 'hidden',
+    },
+    signaturePrivacyButton: {
+      borderRadius: 8,
     },
     savedSignatureBlock: {
       gap: 8,

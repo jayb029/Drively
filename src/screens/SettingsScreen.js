@@ -12,13 +12,22 @@ import {
   Share,
   Platform,
 } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme, THEME_MODES } from '../contexts/ThemeContext';
+import { SensitiveField } from '../components/SensitiveInfo';
 import { clearAllData, importDataFromJSON } from '../utils/storage';
 import { getAppVersion } from '../utils/appInfo';
 import { createDevDrivingData } from '../utils/devData';
+import {
+  formatDateOfBirthFromDate,
+  formatDateOfBirthInput,
+  getDateOfBirthDate,
+  getMinimumDateOfBirthDate,
+} from '../utils/time';
 import {
   isDriveDetectionRunning,
   requestDriveDetectionPermissions,
@@ -38,6 +47,10 @@ import {
 export default function SettingsScreen({ navigation }) {
   const { 
     user, 
+    supervisorProfiles,
+    drives,
+    detectedEvents,
+    streaks,
     settings, 
     updateSettings, 
     setUserInfo, 
@@ -53,11 +66,14 @@ export default function SettingsScreen({ navigation }) {
   const [tempNightHours, setTempNightHours] = useState(user.goalNightHours.toString());
   const [editingDriverInfo, setEditingDriverInfo] = useState(false);
   const [tempDriverName, setTempDriverName] = useState(user.driverName || user.fullName || user.name || '');
-  const [tempDateOfBirth, setTempDateOfBirth] = useState(user.dateOfBirth || user.birthDate || user.dob || '');
+  const [tempDateOfBirth, setTempDateOfBirth] = useState(formatDateOfBirthInput(user.dateOfBirth || user.birthDate || user.dob || ''));
   const [tempPermitNumber, setTempPermitNumber] = useState(user.permitNumber || user.licenseNumber || '');
   
   // Debug logging state
   const [logStats, setLogStats] = useState(null);
+  const [recentLogs, setRecentLogs] = useState([]);
+  const [logsLoaded, setLogsLoaded] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
   const [showDebugDetails, setShowDebugDetails] = useState(false);
   const [driveDetectionRunning, setDriveDetectionRunning] = useState(false);
   const [updatingDetection, setUpdatingDetection] = useState(false);
@@ -116,9 +132,22 @@ export default function SettingsScreen({ navigation }) {
 
   const handleCancelDriverInfoEdit = () => {
     setTempDriverName(user.driverName || user.fullName || user.name || '');
-    setTempDateOfBirth(user.dateOfBirth || user.birthDate || user.dob || '');
+    setTempDateOfBirth(formatDateOfBirthInput(user.dateOfBirth || user.birthDate || user.dob || ''));
     setTempPermitNumber(user.permitNumber || user.licenseNumber || '');
     setEditingDriverInfo(false);
+  };
+
+  const openDateOfBirthPicker = () => {
+    DateTimePickerAndroid.open({
+      value: getDateOfBirthDate(tempDateOfBirth) || new Date(1980, 0, 1),
+      mode: 'date',
+      minimumDate: getMinimumDateOfBirthDate(),
+      maximumDate: new Date(),
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) return;
+        setTempDateOfBirth(formatDateOfBirthFromDate(selectedDate));
+      },
+    });
   };
 
   const handleResetData = () => {
@@ -210,17 +239,24 @@ export default function SettingsScreen({ navigation }) {
 
     Alert.alert(
       'Load Fake Dev Data',
-      'This replaces your current local data with generated placeholder drives and supervisors.',
+      'This fills in missing placeholder drives and supervisors without replacing your current local data.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Load',
           onPress: () => {
-            const fakeData = createDevDrivingData(settings);
+            const fakeData = createDevDrivingData({
+              user,
+              supervisorProfiles,
+              drives,
+              detectedEvents,
+              streaks,
+              settings,
+            });
             replaceData(fakeData);
             logUserAction('load_fake_dev_data', 'SETTINGS', {
-              drivesCount: fakeData.drives.length,
-              supervisorsCount: fakeData.supervisorProfiles.length,
+              drivesAdded: Math.max(fakeData.drives.length - drives.length, 0),
+              supervisorsAdded: Math.max(fakeData.supervisorProfiles.length - supervisorProfiles.length, 0),
             });
             Alert.alert('Fake Data Loaded', 'Placeholder development data has been added.');
           },
@@ -350,8 +386,26 @@ export default function SettingsScreen({ navigation }) {
     try {
       const stats = await getLogStats();
       setLogStats(stats);
+      return stats;
     } catch (error) {
       Alert.alert('Error', 'Failed to load log statistics');
+      return null;
+    }
+  };
+
+  const handleLoadRecentLogs = async () => {
+    try {
+      setLoadingLogs(true);
+      const recent = await getRecentLogs(50);
+      setRecentLogs(recent);
+      setLogsLoaded(true);
+      await handleLoadLogStats();
+      return recent;
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load recent logs');
+      return [];
+    } finally {
+      setLoadingLogs(false);
     }
   };
 
@@ -366,9 +420,17 @@ export default function SettingsScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
+              await logUserAction('clear_logs', 'SETTINGS');
               await clearLogs();
-              setLogStats(null);
-              logUserAction('clear_logs', 'SETTINGS');
+              setLogStats({
+                exists: false,
+                size: 0,
+                lineCount: 0,
+                lastModified: null,
+                sizeFormatted: '0 Bytes',
+              });
+              setRecentLogs([]);
+              setLogsLoaded(true);
               Alert.alert('Success', 'Debug logs cleared successfully');
             } catch (error) {
               Alert.alert('Error', 'Failed to clear debug logs');
@@ -408,23 +470,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleViewRecentLogs = async () => {
-    try {
-      const recentLogs = await getRecentLogs(50);
-      if (recentLogs.length === 0) {
-        Alert.alert('No Logs', 'No recent debug logs found');
-        return;
-      }
-      
-      const logText = recentLogs.join('\n');
-      Alert.alert(
-        'Recent Debug Logs',
-        logText,
-        [{ text: 'OK' }],
-        { scrollable: true }
-      );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load recent logs');
-    }
+    await handleLoadRecentLogs();
   };
 
   const settingSections = [
@@ -516,7 +562,7 @@ export default function SettingsScreen({ navigation }) {
                       return;
                     }
                     setTempDriverName(user.driverName || user.fullName || user.name || '');
-                    setTempDateOfBirth(user.dateOfBirth || user.birthDate || user.dob || '');
+                    setTempDateOfBirth(formatDateOfBirthInput(user.dateOfBirth || user.birthDate || user.dob || ''));
                     setTempPermitNumber(user.permitNumber || user.licenseNumber || '');
                     setEditingDriverInfo(true);
                   }}
@@ -543,17 +589,23 @@ export default function SettingsScreen({ navigation }) {
                   </View>
                   <View style={styles.driverInfoInputGroup}>
                     <Text style={styles.inputLabel}>Date of Birth</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={tempDateOfBirth}
-                      onChangeText={setTempDateOfBirth}
-                      placeholder="MM/DD/YYYY"
-                      placeholderTextColor={theme.colors.text.light}
-                      keyboardType="numbers-and-punctuation"
-                    />
+                    <TouchableOpacity
+                      style={styles.datePickerButton}
+                      onPress={openDateOfBirthPicker}
+                    >
+                      <Text
+                        style={[
+                          styles.datePickerText,
+                          !tempDateOfBirth && { color: theme.colors.text.light },
+                        ]}
+                      >
+                        {tempDateOfBirth || 'Date of birth'}
+                      </Text>
+                      <Icon name="calendar-month-outline" size={20} color={theme.colors.text.secondary} />
+                    </TouchableOpacity>
                   </View>
                   <View style={styles.driverInfoInputGroup}>
-                    <Text style={styles.inputLabel}>Permit Number</Text>
+                    <Text style={styles.inputLabel}>Permit/License Number</Text>
                     <TextInput
                       style={styles.textInput}
                       value={tempPermitNumber}
@@ -573,9 +625,33 @@ export default function SettingsScreen({ navigation }) {
                 </View>
               ) : (
                 <View style={styles.driverInfoDisplay}>
-                  <Text style={styles.driverInfoText}>Name: {user.driverName || user.fullName || user.name || 'Not set'}</Text>
-                  <Text style={styles.driverInfoText}>Date of birth: {user.dateOfBirth || user.birthDate || user.dob || 'Not set'}</Text>
-                  <Text style={styles.driverInfoText}>Permit: {user.permitNumber || user.licenseNumber || 'Optional'}</Text>
+                  <SensitiveField
+                    label="Name"
+                    value={user.driverName || user.fullName || user.name}
+                    fallback="Not set"
+                    labelStyle={styles.driverInfoLabel}
+                    valueStyle={styles.driverInfoText}
+                    containerStyle={styles.driverInfoSensitiveRow}
+                    revealLabel="Driver name"
+                  />
+                  <SensitiveField
+                    label="Date of birth"
+                    value={user.dateOfBirth || user.birthDate || user.dob}
+                    fallback="Not set"
+                    labelStyle={styles.driverInfoLabel}
+                    valueStyle={styles.driverInfoText}
+                    containerStyle={styles.driverInfoSensitiveRow}
+                    revealLabel="Driver date of birth"
+                  />
+                  <SensitiveField
+                    label="Permit"
+                    value={user.permitNumber || user.licenseNumber}
+                    fallback="Optional"
+                    labelStyle={styles.driverInfoLabel}
+                    valueStyle={styles.driverInfoText}
+                    containerStyle={styles.driverInfoSensitiveRow}
+                    revealLabel="Driver permit number"
+                  />
                 </View>
               )}
             </View>
@@ -728,8 +804,8 @@ export default function SettingsScreen({ navigation }) {
                   value={!!settings.driveDetectionEnabled}
                   onValueChange={handleDriveDetectionToggle}
                   disabled={updatingDetection}
-                  trackColor={{ false: theme.colors.border.medium, true: theme.colors.primaryLight }}
-                  thumbColor={settings.driveDetectionEnabled ? theme.colors.primary : theme.colors.surface}
+                  trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+                  thumbColor={settings.driveDetectionEnabled ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
                 />
               </View>
 
@@ -914,8 +990,11 @@ export default function SettingsScreen({ navigation }) {
                     <TouchableOpacity
                       style={[styles.debugButton, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary }]}
                       onPress={handleViewRecentLogs}
+                      disabled={loadingLogs}
                     >
-                      <Text style={[styles.debugButtonText, { color: theme.colors.primary }]}>View Recent</Text>
+                      <Text style={[styles.debugButtonText, { color: theme.colors.primary }]}>
+                        {loadingLogs ? 'Loading...' : 'View Recent'}
+                      </Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity
@@ -944,6 +1023,27 @@ export default function SettingsScreen({ navigation }) {
                     Debug logs help track app behavior and are automatically cleaned up every 2 days. 
                     Logs contain no personal information.
                   </Text>
+
+                  {logsLoaded && (
+                    <View style={[styles.recentLogsContainer, { borderColor: theme.colors.border.light }]}>
+                      {recentLogs.length > 0 ? (
+                        <ScrollView style={styles.recentLogsScroll} nestedScrollEnabled>
+                          {recentLogs.map((line, index) => (
+                            <Text
+                              key={`${index}-${line}`}
+                              style={[styles.recentLogLine, { color: theme.colors.text.secondary }]}
+                            >
+                              {line}
+                            </Text>
+                          ))}
+                        </ScrollView>
+                      ) : (
+                        <Text style={[styles.emptyLogsText, { color: theme.colors.text.secondary }]}>
+                          No debug logs found. Use the app normally, then return here to view recent activity.
+                        </Text>
+                      )}
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -991,8 +1091,8 @@ export default function SettingsScreen({ navigation }) {
             <Switch
               value={item.value}
               onValueChange={item.onValueChange}
-              trackColor={{ false: theme.colors.border.medium, true: theme.colors.primaryLight }}
-              thumbColor={item.value ? theme.colors.primary : theme.colors.surface}
+              trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+              thumbColor={item.value ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
             />
           ) : item.value ? (
             <Text style={[styles.settingValue, { color: theme.colors.text.secondary }]}>{item.value}</Text>
@@ -1037,7 +1137,7 @@ const createStyles = (theme) => StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   header: {
     marginBottom: 32,
@@ -1107,11 +1207,7 @@ const createStyles = (theme) => StyleSheet.create({
     color: theme.colors.text.light,
   },
   goalsContainer: {},
-  driverInfoContainer: {
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border.light,
-    paddingTop: 16,
-  },
+  driverInfoContainer: {},
   settingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1136,7 +1232,15 @@ const createStyles = (theme) => StyleSheet.create({
   },
   goalsDisplay: {},
   driverInfoDisplay: {
-    gap: 4,
+    gap: 8,
+  },
+  driverInfoSensitiveRow: {
+    gap: 2,
+  },
+  driverInfoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.text.secondary,
   },
   driverInfoText: {
     fontSize: 14,
@@ -1191,6 +1295,23 @@ const createStyles = (theme) => StyleSheet.create({
     borderRadius: 6,
     padding: 10,
     fontSize: 14,
+    color: theme.colors.text.primary,
+  },
+  datePickerButton: {
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderColor: theme.colors.border.medium,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 15,
     color: theme.colors.text.primary,
   },
   cancelButton: {
@@ -1281,9 +1402,6 @@ const createStyles = (theme) => StyleSheet.create({
   },
   updateContainer: {
     gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border.light,
-    paddingTop: 16,
   },
   updateStatusText: {
     fontSize: 13,
@@ -1370,5 +1488,23 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     lineHeight: 16,
+  },
+  recentLogsContainer: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  recentLogsScroll: {
+    maxHeight: 260,
+  },
+  recentLogLine: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'monospace',
+  },
+  emptyLogsText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
