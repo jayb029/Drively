@@ -47,7 +47,7 @@ const GOAL_PRESETS = [
     id: 'standard',
     title: '50 Hours',
     subtitle: '10 hours at night',
-    dayHours: 40,
+    dayHours: 50,
     nightHours: 10,
     description: 'Most common requirement',
   },
@@ -55,7 +55,7 @@ const GOAL_PRESETS = [
     id: 'comprehensive',
     title: '60 Hours',
     subtitle: '10 hours at night',
-    dayHours: 50,
+    dayHours: 60,
     nightHours: 10,
     description: 'Comprehensive training',
   },
@@ -67,7 +67,7 @@ export default function OnboardingScreen({ navigation }) {
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
   const [customGoal, setCustomGoal] = useState(false);
-  const [dayHours, setDayHours] = useState('40');
+  const [dayHours, setDayHours] = useState('50');
   const [nightHours, setNightHours] = useState('10');
   const [temperatureUnit, setTemperatureUnit] = useState('metric');
   const [hasAgreed, setHasAgreed] = useState(false);
@@ -83,19 +83,19 @@ export default function OnboardingScreen({ navigation }) {
 
   const areGoalsValid = () => {
     const { day, night } = parseGoalValues();
-    return day >= 0 && night >= 0 && day + night > 0;
+    return day > 0 && night >= 0 && night <= day;
   };
 
   const validateGoals = () => {
     const { day, night } = parseGoalValues();
 
-    if (day < 0 || night < 0) {
-      Alert.alert('Invalid Hours', 'Goal hours cannot be negative.');
+    if (day <= 0 || night < 0) {
+      Alert.alert('Invalid Hours', 'Total required hours must be greater than 0, and night hours cannot be negative.');
       return false;
     }
 
-    if (day + night === 0) {
-      Alert.alert('Invalid Goal', 'Please enter at least 1 hour for day or night driving.');
+    if (night > day) {
+      Alert.alert('Invalid Goal', 'Night hours must be part of the total required hours.');
       return false;
     }
 
@@ -264,7 +264,7 @@ export default function OnboardingScreen({ navigation }) {
         <View style={styles.customGoalContainer}>
           <View style={styles.goalInputRow}>
             <View style={styles.goalInputBlock}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Day Driving Hours</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Total Required Hours</Text>
               <TextInput
                 style={[
                   styles.goalInput,
@@ -277,12 +277,12 @@ export default function OnboardingScreen({ navigation }) {
                 value={dayHours}
                 onChangeText={(value) => setDayHours(value.replace(/[^0-9.]/g, ''))}
                 keyboardType="numeric"
-                placeholder="e.g. 40"
+                placeholder="e.g. 50"
                 placeholderTextColor={theme.colors.text.light}
               />
             </View>
             <View style={styles.goalInputBlock}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Night Driving Hours</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Night Minimum Hours</Text>
               <TextInput
                 style={[
                   styles.goalInput,
@@ -301,7 +301,7 @@ export default function OnboardingScreen({ navigation }) {
             </View>
           </View>
           <Text style={[styles.customGoalHint, { color: theme.colors.text.secondary }]}>
-            Total goal: {(parseGoalValues().day + parseGoalValues().night) || 0} hours. Adjust both fields to match your local requirements.
+            Night hours count toward the total. Current goal: {parseGoalValues().day || 0} total hours, including {parseGoalValues().night || 0} at night.
           </Text>
         </View>
       )}

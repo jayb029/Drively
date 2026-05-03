@@ -35,6 +35,9 @@ const initialState = {
   user: {
     licenseType: null,
     licenseDate: null,
+    driverName: '',
+    dateOfBirth: '',
+    permitNumber: '',
     goalDayHours: 50,
     goalNightHours: 10,
     completedDayHours: 0,
@@ -264,7 +267,12 @@ function drivingReducer(state, action) {
         ...state,
         user: {
           ...state.user,
+          ...(action.payload?.user || {}),
           onboardingComplete: true,
+        },
+        settings: {
+          ...state.settings,
+          ...(action.payload?.settings || {}),
         },
       };
 
@@ -386,6 +394,16 @@ export function DrivingProvider({ children }) {
   }, [state.user, state.supervisorProfiles, state.drives, state.detectedEvents, state.streaks, state.settings, state.loading]);
 
   // Context value with actions
+  const buildPersistedData = (overrides = {}) => ({
+    user: overrides.user || state.user,
+    supervisorProfiles: overrides.supervisorProfiles || state.supervisorProfiles,
+    drives: overrides.drives || state.drives,
+    detectedEvents: overrides.detectedEvents || state.detectedEvents,
+    streaks: overrides.streaks || state.streaks,
+    settings: overrides.settings || state.settings,
+    version: getAppVersion(),
+  });
+
   const value = {
     ...state,
     
@@ -423,8 +441,37 @@ export function DrivingProvider({ children }) {
     updateDetectedEvent: (event) =>
       dispatch({ type: ACTIONS.UPDATE_DETECTED_EVENT, payload: event }),
     
-    completeOnboarding: () => 
-      dispatch({ type: ACTIONS.COMPLETE_ONBOARDING }),
+    completeOnboarding: async ({ userInfo, settings } = {}) => {
+      const nextUser = {
+        ...state.user,
+        ...(userInfo || {}),
+        onboardingComplete: true,
+      };
+      const nextSettings = {
+        ...state.settings,
+        ...(settings || {}),
+      };
+      const didSave = await saveData(buildPersistedData({
+        user: nextUser,
+        settings: nextSettings,
+      }));
+
+      if (!didSave) {
+        return false;
+      }
+
+      dispatch({
+        type: ACTIONS.COMPLETE_ONBOARDING,
+        payload: {
+          user: userInfo,
+          settings,
+        },
+      });
+      return true;
+    },
+
+    replaceData: (data) =>
+      dispatch({ type: ACTIONS.LOAD_DATA, payload: data }),
     
     resetData: () => 
       dispatch({ type: ACTIONS.RESET_DATA }),

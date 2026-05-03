@@ -26,6 +26,7 @@ export default function ExportScreen({ navigation }) {
   const { theme } = useTheme();
   const [exporting, setExporting] = useState(false);
   const [isOfficialPDF, setIsOfficialPDF] = useState(false);
+  const [leaveSupervisorSignatureBlank, setLeaveSupervisorSignatureBlank] = useState(false);
   const [showModeSelector, setShowModeSelector] = useState(true);
   const [exportMode, setExportMode] = useState(null); // 'share' or 'save'
 
@@ -37,6 +38,12 @@ export default function ExportScreen({ navigation }) {
     setShowModeSelector(true);
     setExportMode(null);
   }, []);
+
+  useEffect(() => {
+    if (!isOfficialPDF) {
+      setLeaveSupervisorSignatureBlank(false);
+    }
+  }, [isOfficialPDF]);
 
   const saveFileWithPicker = async (content, fileName, mimeType) => {
     try {
@@ -241,7 +248,9 @@ export default function ExportScreen({ navigation }) {
       setExporting(true);
       
       const data = { drives, supervisorProfiles, user, streaks };
-      const pdfUri = await generatePDFReport(data, null, isOfficialPDF);
+      const pdfUri = await generatePDFReport(data, null, isOfficialPDF, {
+        omitSupervisorSignatures: isOfficialPDF && leaveSupervisorSignatureBlank,
+      });
       
       if (exportMode === 'share') {
         if (await Sharing.isAvailableAsync()) {
@@ -328,13 +337,13 @@ export default function ExportScreen({ navigation }) {
   const handleShareSummary = async () => {
     try {
       const totalHours = user.completedDayHours + user.completedNightHours;
-      const goalHours = user.goalDayHours + user.goalNightHours;
-      const progressPercent = Math.round((totalHours / goalHours) * 100);
+      const goalHours = user.goalDayHours;
+      const progressPercent = Math.round((totalHours / Math.max(goalHours, 1)) * 100);
       
       const message = `🛣️ My Driving Progress with Drively:\n\n` +
         `✅ ${totalHours.toFixed(1)} / ${goalHours} hours completed (${progressPercent}%)\n` +
-        `☀️ Day driving: ${user.completedDayHours.toFixed(1)} / ${user.goalDayHours} hours\n` +
-        `🌙 Night driving: ${user.completedNightHours.toFixed(1)} / ${user.goalNightHours} hours\n\n` +
+        `☀️ Day driving: ${user.completedDayHours.toFixed(1)} hours\n` +
+        `🌙 Night driving: ${user.completedNightHours.toFixed(1)} / ${user.goalNightHours} minimum hours\n\n` +
         `🔥 Current streak: ${streaks.current} days\n` +
         `🏆 Longest streak: ${streaks.longest} days\n\n` +
         `#DrivingProgress #Drively`;
@@ -516,7 +525,7 @@ export default function ExportScreen({ navigation }) {
             <Text style={styles.statLabel}>Progress:</Text>
             <Text style={styles.statValue}>
               {Math.round(((user.completedDayHours + user.completedNightHours) / 
-                (user.goalDayHours + user.goalNightHours)) * 100)}%
+                Math.max(user.goalDayHours, 1)) * 100)}%
             </Text>
           </View>
           
@@ -576,6 +585,26 @@ export default function ExportScreen({ navigation }) {
                       </Text>
                     </View>
                   </View>
+
+                  {isOfficialPDF && (
+                    <View style={[styles.checkboxRow, styles.pdfSubOptionRow]}>
+                      <Switch
+                        value={leaveSupervisorSignatureBlank}
+                        onValueChange={setLeaveSupervisorSignatureBlank}
+                        trackColor={{ 
+                          false: theme.colors.border.medium, 
+                          true: theme.colors.secondary 
+                        }}
+                        thumbColor={leaveSupervisorSignatureBlank ? theme.colors.white : theme.colors.surface}
+                      />
+                      <View style={styles.checkboxLabel}>
+                        <Text style={styles.checkboxTitle}>Leave signature blank</Text>
+                        <Text style={styles.checkboxDescription}>
+                          Keep saved signatures in the app, but export blank signature lines for supervisors to sign later.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -879,6 +908,12 @@ const createStyles = (theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  pdfSubOptionRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border.light,
   },
   checkboxLabel: {
     flex: 1,

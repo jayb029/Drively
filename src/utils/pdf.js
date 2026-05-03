@@ -16,16 +16,25 @@ import { formatDateForDisplay } from './time';
  * @param {Object} data.user - User data with goals and progress
  * @param {Object} data.streaks - Streak statistics
  * @param {boolean} isOfficial - Whether this is for official/DMV use
+ * @param {Object} options - PDF rendering options
+ * @param {boolean} options.omitSupervisorSignatures - Keep saved supervisor signatures out of the PDF
  * @returns {string} HTML content for PDF generation
  */
-export const generateDrivingReportHTML = (data, isOfficial = false) => {
+export const generateDrivingReportHTML = (data, isOfficial = false, options = {}) => {
   const { drives, supervisorProfiles = [], user, streaks } = data;
+  const { omitSupervisorSignatures = false } = options;
   const totalDayHours = user.completedDayHours;
   const totalNightHours = user.completedNightHours;
   const totalHours = totalDayHours + totalNightHours;
-  const goalHours = user.goalDayHours + user.goalNightHours;
-  const progressPercent = Math.round((totalHours / goalHours) * 100);
+  const goalHours = user.goalDayHours;
+  const goalNightHours = user.goalNightHours;
+  const progressPercent = Math.round((totalHours / Math.max(goalHours, 1)) * 100);
   const currentDate = formatDateForDisplay(new Date().toISOString().split('T')[0]);
+  const driverInfo = {
+    name: user.driverName || user.fullName || user.name || '',
+    dateOfBirth: user.dateOfBirth || user.birthDate || user.dob || '',
+    permitNumber: user.permitNumber || user.licenseNumber || '',
+  };
 
   const escapeHTML = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -33,6 +42,29 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+  const formatRequiredHours = (value) => {
+    const numericValue = Number(value);
+
+    if (!Number.isFinite(numericValue)) {
+      return '';
+    }
+
+    return Number.isInteger(numericValue)
+      ? String(numericValue)
+      : numericValue.toFixed(1);
+  };
+
+  const requiredTotalHours = formatRequiredHours(goalHours);
+  const requiredNightHours = formatRequiredHours(goalNightHours);
+
+  const permitNumberHTML = driverInfo.permitNumber
+    ? `
+            <div>
+              <span class="field-label">Permit Number</span>
+              <div class="field-value">${escapeHTML(driverInfo.permitNumber)}</div>
+            </div>`
+    : '';
 
   const signatureToSVG = (signature) => {
     const paths = Array.isArray(signature?.paths) ? signature.paths : [];
@@ -53,16 +85,21 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
     `;
   };
 
+  const supervisorDateOfBirth = (profile) => profile.dateOfBirth || profile.birthDate || profile.dob || '';
+
   const profileAgreementHTML = supervisorProfiles.length > 0
     ? supervisorProfiles.map((profile) => `
       <div class="profile-signature-row">
         <div class="profile-name-block">
           <div class="profile-name">${escapeHTML(profile.name)}</div>
-          <div class="profile-meta">${escapeHTML([profile.relationship, profile.age ? `${profile.age} years old` : null].filter(Boolean).join(' · '))}</div>
+          <div class="profile-meta">${escapeHTML([profile.relationship, supervisorDateOfBirth(profile) ? `DOB ${supervisorDateOfBirth(profile)}` : null, profile.age ? `${profile.age} years old` : null].filter(Boolean).join(' · '))}</div>
         </div>
         <div class="profile-signature-block">
-          ${signatureToSVG(profile.signature)}
-          <div class="signature-label">Signature</div>
+          ${signatureToSVG(omitSupervisorSignatures ? null : profile.signature)}
+          <div class="signature-fields">
+            <span class="signature-line-label">Signature</span>
+            <span class="signature-date-field">Date</span>
+          </div>
         </div>
       </div>
     `).join('')
@@ -74,7 +111,10 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
         </div>
         <div class="profile-signature-block">
           <div class="signature-empty"></div>
-          <div class="signature-label">Signature</div>
+          <div class="signature-fields">
+            <span class="signature-line-label">Signature</span>
+            <span class="signature-date-field">Date</span>
+          </div>
         </div>
       </div>
     `;
@@ -95,18 +135,19 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
     
     drivesHTML += `
       <tr style="background-color: ${rowColor};">
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${escapeHTML(formatDateForDisplay(drive.date))}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${escapeHTML(drive.startTime)}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">${duration}</td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;">
+        <td class="date-cell">${escapeHTML(formatDateForDisplay(drive.date))}</td>
+        <td class="time-cell">${escapeHTML(drive.startTime)}</td>
+        <td class="time-cell">${escapeHTML(drive.endTime)}</td>
+        <td class="hours-cell">${duration}</td>
+        <td class="type-cell">
           <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; color: white; background-color: ${drive.isNightDrive ? '#1f2937' : '#f59e0b'};">
             ${escapeHTML(type)}
           </span>
         </td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; min-width: 120px;">
+        <td class="supervisor-cell">
           <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px;">${escapeHTML(supervisor)}</div>
         </td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #e5e7eb; text-align: center; min-width: 80px;">
+        <td class="initials-cell">
           <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px; font-weight: 600;">${escapeHTML(initials)}</div>
         </td>
       </tr>
@@ -149,6 +190,40 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
             gap: 20px;
             margin-bottom: 30px;
           }
+          .driver-info {
+            margin: -12px 0 24px 0;
+            padding: 14px 16px;
+            border: 1.5px solid #9ca3af;
+            background: #ffffff;
+            page-break-inside: avoid;
+          }
+          .driver-info h2 {
+            margin: 0 0 10px 0;
+            color: #111827;
+            font-size: 14px;
+            letter-spacing: 0;
+            text-transform: uppercase;
+          }
+          .driver-info-grid {
+            display: grid;
+            grid-template-columns: ${driverInfo.permitNumber ? '1.4fr 1fr 1fr' : '1.4fr 1fr'};
+            gap: 14px;
+          }
+          .field-label {
+            display: block;
+            color: #4b5563;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 5px;
+          }
+          .field-value {
+            min-height: 20px;
+            border-bottom: 1.5px solid #111827;
+            color: #111827;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 0 2px 2px 2px;
+          }
           .summary-card {
             background: #f8fafc;
             padding: 20px;
@@ -171,6 +246,13 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
           .stat-value {
             font-weight: 600;
             color: #374151;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+          }
+          .required-hours {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid #9ca3af;
           }
           .progress-bar {
             width: 100%;
@@ -216,16 +298,48 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
           .drives-table th:last-child {
             border-right: none;
           }
+          .drives-table th:nth-child(2),
+          .drives-table th:nth-child(3),
+          .drives-table th:nth-child(4) {
+            text-align: right;
+          }
+          .drives-table th:nth-child(5),
+          .drives-table th:nth-child(7) {
+            text-align: center;
+          }
           .drives-table td {
-            border-right: 1px solid #e5e7eb;
+            padding: 12px 8px;
+            border-bottom: 1px solid #9ca3af;
+            border-right: 1px solid #9ca3af;
           }
           .drives-table td:last-child {
             border-right: none;
           }
+          .time-cell {
+            text-align: right;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+          }
+          .hours-cell {
+            text-align: right;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+          }
+          .type-cell {
+            text-align: center;
+            white-space: nowrap;
+          }
+          .supervisor-cell {
+            min-width: 120px;
+          }
+          .initials-cell {
+            min-width: 80px;
+            text-align: center;
+          }
           .footer {
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid #9ca3af;
             text-align: center;
             color: #6b7280;
             font-size: 12px;
@@ -263,6 +377,67 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
             font-size: 13px;
             line-height: 1.45;
           }
+          .agreement-note {
+            margin: 0 0 14px 0;
+            color: #4b5563;
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: 600;
+          }
+          .master-certification {
+            margin-top: 22px;
+            padding: 16px;
+            border: 1.5px solid #9ca3af;
+            background: #ffffff;
+            page-break-inside: avoid;
+          }
+          .master-certification h3 {
+            margin-bottom: 12px;
+          }
+          .certification-fill-line {
+            display: inline-block;
+            width: 86px;
+            border-bottom: 1.5px solid #111827;
+            min-height: 13px;
+            color: #111827;
+            font-weight: 700;
+            line-height: 1;
+            padding: 0 4px 2px 4px;
+            text-align: center;
+            vertical-align: baseline;
+          }
+          .master-signature-grid {
+            display: grid;
+            grid-template-columns: 1fr 120px;
+            gap: 18px;
+            margin-top: 28px;
+            font-size: 11px;
+            color: #6b7280;
+          }
+          .master-signature-line,
+          .master-date-line {
+            border-top: 1.5px solid #111827;
+            padding-top: 4px;
+          }
+          .master-date-line {
+            text-align: center;
+          }
+          .signed-location {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            margin: 0 0 16px 0;
+            color: #374151;
+            font-size: 12px;
+          }
+          .signed-location-line {
+            flex: 1;
+            border-bottom: 1px solid #111827;
+            height: 18px;
+          }
+          .signed-location-hint {
+            color: #6b7280;
+          }
           .profile-signature-row {
             display: flex;
             align-items: stretch;
@@ -293,7 +468,7 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
             flex: 1;
             padding: 8px 12px 6px 12px;
             background: #ffffff;
-            min-height: 82px;
+            min-height: 94px;
           }
           .saved-signature {
             width: 100%;
@@ -302,18 +477,46 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
           }
           .signature-empty {
             height: 62px;
-            border-bottom: 1px solid #111827;
           }
-          .signature-label {
+          .signature-fields {
+            display: grid;
+            grid-template-columns: 1fr 96px;
+            gap: 14px;
+            align-items: end;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #6b7280;
+          }
+          .signature-line-label,
+          .signature-date-field {
+            border-top: 1px solid #111827;
+            padding-top: 2px;
+          }
+          .signature-date-field {
+            text-align: center;
+          }
+          .footer-branding {
             font-size: 12px;
             color: #6b7280;
-            text-align: center;
+          }
+          .footer-branding.official {
+            font-size: 10px;
+            color: #9ca3af;
+            margin-bottom: 2px;
+          }
+          .footer-disclaimer {
+            margin: 8px auto 0 auto;
+            max-width: 620px;
+            color: #4b5563;
+            font-size: 11px;
+            line-height: 1.4;
           }
           @media print {
             body { 
               padding: 10px 10px 40px 10px;
             }
             .summary-grid { grid-template-columns: 1fr; }
+            .driver-info-grid { grid-template-columns: 1fr; }
             .signature-section { page-break-inside: avoid; }
             
             @page:first {
@@ -344,9 +547,26 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
       </head>
       <body>
         <div class="header">
-          <h1>${isOfficial ? 'Official Driving Log Report' : '🛣️ Driving Log Report'}</h1>
+          <h1>${isOfficial ? 'Driving Practice Log' : '🛣️ Driving Log Report'}</h1>
           <p>Generated on ${currentDate}</p>
         </div>
+
+        ${isOfficial ? `
+        <div class="driver-info">
+          <h2>Driver Information</h2>
+          <div class="driver-info-grid">
+            <div>
+              <span class="field-label">Driver Name</span>
+              <div class="field-value">${escapeHTML(driverInfo.name)}</div>
+            </div>
+            <div>
+              <span class="field-label">Date of Birth</span>
+              <div class="field-value">${escapeHTML(driverInfo.dateOfBirth)}</div>
+            </div>
+${permitNumberHTML}
+          </div>
+        </div>
+        ` : ''}
 
         <div class="summary-grid">
           <div class="summary-card">
@@ -367,6 +587,18 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
               <span class="stat-label">Total Hours:</span>
               <span class="stat-value">${totalHours.toFixed(1)} hours</span>
             </div>
+            ${isOfficial ? `
+            <div class="required-hours">
+              <div class="stat-row">
+                <span class="stat-label">Total Required:</span>
+                <span class="stat-value">${goalHours} hours</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Night Minimum:</span>
+                <span class="stat-value">${goalNightHours} hours</span>
+              </div>
+            </div>
+            ` : ''}
             ${!isOfficial ? `
             <div class="stat-row">
               <span class="stat-label">Goal:</span>
@@ -415,11 +647,13 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
         </div>
 
         <div class="drives-section">
-          <h2>${isOfficial ? 'Drive Log' : '📝 Drive Log'} (${drives.length} total drives)</h2>            <table class="drives-table">
+          <h2>${isOfficial ? 'Drive Log' : '📝 Drive Log'} (${drives.length} total drives)</h2>
+          <table class="drives-table">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Time</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
                   <th>Duration</th>
                   <th>Type</th>
                   <th>Supervisor</th>
@@ -436,15 +670,40 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
         <div class="profile-agreement">
           <h3>Supervisor Agreement</h3>
           <p class="agreement-text">
-            I agree and certify under penalty of perjury that the driving practice recorded in this log is accurate to the best of my knowledge, that I supervised or verified the applicable entries associated with my profile, and that the signature shown below is my signature for official review.
+            ${omitSupervisorSignatures
+              ? 'I agree and certify under penalty of perjury that the driving practice recorded in this log is accurate to the best of my knowledge, and that I supervised or verified the applicable entries associated with my profile. The signature line below is left blank for physical signature.'
+              : 'I agree and certify under penalty of perjury that the driving practice recorded in this log is accurate to the best of my knowledge, that I supervised or verified the applicable entries associated with my profile, and that the signature shown below is my signature for official review.'
+            }
           </p>
+          <p class="agreement-note">Supervisor must be a licensed driver aged 21 or older, as required by Kansas law.</p>
+          <div class="signed-location">
+            <span>Signed in:</span>
+            <span class="signed-location-line"></span>
+            <span class="signed-location-hint">(City, State)</span>
+          </div>
           ${profileAgreementHTML}
+          <div class="master-certification">
+            <h3>Primary Parent/Guardian Certification</h3>
+            <p class="agreement-text">
+              I certify that the applicant has completed at least <span class="certification-fill-line">${escapeHTML(requiredTotalHours)}</span> total hours,
+              including at least <span class="certification-fill-line">${escapeHTML(requiredNightHours)}</span> hours of night driving.
+            </p>
+            <div class="master-signature-grid">
+              <div class="master-signature-line">Primary Parent/Guardian Signature</div>
+              <div class="master-date-line">Date</div>
+            </div>
+          </div>
         </div>
         ` : ''}
 
         <div class="footer">
-          <p>Generated by Drively - Your personal driving log tracker</p>
+          <p class="footer-branding ${isOfficial ? 'official' : ''}">Generated by Drively${isOfficial ? '' : ' - Your personal driving log tracker'}</p>
           <p>This report contains ${drives.length} driving sessions totaling ${totalHours.toFixed(1)} hours</p>
+          ${isOfficial ? `
+          <p class="footer-disclaimer">
+            This log is a personal record of supervised driving practice and is intended to meet Kansas Department of Revenue requirements.
+          </p>
+          ` : ''}
         </div>
         </body>
       </html>
@@ -456,11 +715,12 @@ export const generateDrivingReportHTML = (data, isOfficial = false) => {
  * @param {Object} data - The driving data object
  * @param {string} filename - Optional custom filename
  * @param {boolean} isOfficial - Whether this is for official/DMV use
+ * @param {Object} options - PDF rendering options
  * @returns {Promise<string>} - Promise resolving to the file URI
  */
-export const generatePDFReport = async (data, filename, isOfficial = false) => {
+export const generatePDFReport = async (data, filename, isOfficial = false, options = {}) => {
   try {
-    const htmlContent = generateDrivingReportHTML(data, isOfficial);
+    const htmlContent = generateDrivingReportHTML(data, isOfficial, options);
     const suffix = isOfficial ? '_official' : '';
     const defaultFilename = `drively_report${suffix}_${new Date().toISOString().split('T')[0]}.pdf`;
     const finalFilename = filename || defaultFilename;
@@ -512,8 +772,8 @@ export const generatePDFReport = async (data, filename, isOfficial = false) => {
 export const generateProgressSummaryHTML = (data) => {
   const { user, streaks } = data;
   const totalHours = user.completedDayHours + user.completedNightHours;
-  const goalHours = user.goalDayHours + user.goalNightHours;
-  const progressPercent = Math.round((totalHours / goalHours) * 100);
+  const goalHours = user.goalDayHours;
+  const progressPercent = Math.round((totalHours / Math.max(goalHours, 1)) * 100);
   const currentDate = formatDateForDisplay(new Date().toISOString().split('T')[0]);
 
   return `

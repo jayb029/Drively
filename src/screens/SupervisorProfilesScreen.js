@@ -21,6 +21,7 @@ const SIGNATURE_HEIGHT = 160;
 const emptyForm = {
   name: '',
   relationship: '',
+  dateOfBirth: '',
   age: '',
   licenseNumber: '',
   phone: '',
@@ -102,6 +103,7 @@ export default function SupervisorProfilesScreen() {
     setForm({
       name: profile.name || '',
       relationship: profile.relationship || '',
+      dateOfBirth: profile.dateOfBirth || profile.birthDate || profile.dob || '',
       age: profile.age ? String(profile.age) : '',
       licenseNumber: profile.licenseNumber || '',
       phone: profile.phone || '',
@@ -127,6 +129,7 @@ export default function SupervisorProfilesScreen() {
     return {
       name: form.name.trim(),
       relationship: form.relationship.trim() || 'Supervisor',
+      dateOfBirth: form.dateOfBirth.trim() || null,
       age: form.age ? age : null,
       licenseNumber: form.licenseNumber.trim() || null,
       phone: form.phone.trim() || null,
@@ -269,6 +272,14 @@ export default function SupervisorProfilesScreen() {
               placeholder="Relationship"
               placeholderTextColor={theme.colors.text.light}
             />
+            <TextInput
+              style={styles.input}
+              value={form.dateOfBirth}
+              onChangeText={(dateOfBirth) => setForm((current) => ({ ...current, dateOfBirth }))}
+              placeholder="Date of birth"
+              placeholderTextColor={theme.colors.text.light}
+              keyboardType="numbers-and-punctuation"
+            />
             <View style={styles.row}>
               <TextInput
                 style={[styles.input, styles.rowInput]}
@@ -344,7 +355,11 @@ export default function SupervisorProfilesScreen() {
                   <View style={styles.profileMain}>
                     <Text style={styles.profileName}>{profile.name}</Text>
                     <Text style={styles.profileMeta}>
-                      {[profile.relationship, profile.age ? `${profile.age} years old` : null]
+                      {[
+                        profile.relationship,
+                        (profile.dateOfBirth || profile.birthDate || profile.dob) ? `DOB ${profile.dateOfBirth || profile.birthDate || profile.dob}` : null,
+                        profile.age ? `${profile.age} years old` : null,
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                     </Text>

@@ -15,6 +15,7 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme, THEME_MODES } from '../contexts/ThemeContext';
 import { clearAllData } from '../utils/storage';
 import { getAppVersion } from '../utils/appInfo';
+import { createDevDrivingData } from '../utils/devData';
 import {
   isDriveDetectionRunning,
   requestDriveDetectionPermissions,
@@ -36,6 +37,7 @@ export default function SettingsScreen({ navigation }) {
     settings, 
     updateSettings, 
     setUserInfo, 
+    replaceData,
     resetData 
   } = useDriving();
 
@@ -44,12 +46,17 @@ export default function SettingsScreen({ navigation }) {
   const [editingGoals, setEditingGoals] = useState(false);
   const [tempDayHours, setTempDayHours] = useState(user.goalDayHours.toString());
   const [tempNightHours, setTempNightHours] = useState(user.goalNightHours.toString());
+  const [editingDriverInfo, setEditingDriverInfo] = useState(false);
+  const [tempDriverName, setTempDriverName] = useState(user.driverName || user.fullName || user.name || '');
+  const [tempDateOfBirth, setTempDateOfBirth] = useState(user.dateOfBirth || user.birthDate || user.dob || '');
+  const [tempPermitNumber, setTempPermitNumber] = useState(user.permitNumber || user.licenseNumber || '');
   
   // Debug logging state
   const [logStats, setLogStats] = useState(null);
   const [showDebugDetails, setShowDebugDetails] = useState(false);
   const [driveDetectionRunning, setDriveDetectionRunning] = useState(false);
   const [updatingDetection, setUpdatingDetection] = useState(false);
+  const [versionTapCount, setVersionTapCount] = useState(0);
 
   useEffect(() => {
     isDriveDetectionRunning()
@@ -61,13 +68,13 @@ export default function SettingsScreen({ navigation }) {
     const dayHours = parseFloat(tempDayHours) || 0;
     const nightHours = parseFloat(tempNightHours) || 0;
     
-    if (dayHours < 0 || nightHours < 0) {
-      Alert.alert('Invalid Input', 'Hours cannot be negative.');
+    if (dayHours <= 0 || nightHours < 0) {
+      Alert.alert('Invalid Input', 'Total required hours must be greater than 0, and night hours cannot be negative.');
       return;
     }
     
-    if (dayHours + nightHours === 0) {
-      Alert.alert('Invalid Input', 'Total goal must be greater than 0.');
+    if (nightHours > dayHours) {
+      Alert.alert('Invalid Input', 'Night hours must be part of the total required hours.');
       return;
     }
 
@@ -85,6 +92,25 @@ export default function SettingsScreen({ navigation }) {
     setTempDayHours(user.goalDayHours.toString());
     setTempNightHours(user.goalNightHours.toString());
     setEditingGoals(false);
+  };
+
+  const handleSaveDriverInfo = () => {
+    setUserInfo({
+      driverName: tempDriverName.trim(),
+      dateOfBirth: tempDateOfBirth.trim(),
+      permitNumber: tempPermitNumber.trim(),
+    });
+
+    setEditingDriverInfo(false);
+    logUserAction('update_driver_info', 'SETTINGS');
+    Alert.alert('Driver Info Updated', 'Official exports will use this driver information.');
+  };
+
+  const handleCancelDriverInfoEdit = () => {
+    setTempDriverName(user.driverName || user.fullName || user.name || '');
+    setTempDateOfBirth(user.dateOfBirth || user.birthDate || user.dob || '');
+    setTempPermitNumber(user.permitNumber || user.licenseNumber || '');
+    setEditingDriverInfo(false);
   };
 
   const handleResetData = () => {
@@ -112,6 +138,43 @@ export default function SettingsScreen({ navigation }) {
         },
       ]
     );
+  };
+
+  const loadDevData = () => {
+    if (!__DEV__) return;
+
+    Alert.alert(
+      'Load Fake Dev Data',
+      'This replaces your current local data with generated placeholder drives and supervisors.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Load',
+          onPress: () => {
+            const fakeData = createDevDrivingData(settings);
+            replaceData(fakeData);
+            logUserAction('load_fake_dev_data', 'SETTINGS', {
+              drivesCount: fakeData.drives.length,
+              supervisorsCount: fakeData.supervisorProfiles.length,
+            });
+            Alert.alert('Fake Data Loaded', 'Placeholder development data has been added.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAppVersionPress = () => {
+    if (!__DEV__) return;
+
+    setVersionTapCount((count) => {
+      const nextCount = count + 1;
+      if (nextCount >= 10) {
+        loadDevData();
+        return 0;
+      }
+      return nextCount;
+    });
   };
 
   const handleDriveDetectionToggle = async (enabled) => {
@@ -261,17 +324,17 @@ export default function SettingsScreen({ navigation }) {
               {editingGoals ? (
                 <View style={styles.editGoalsContainer}>
                   <View style={styles.goalInput}>
-                    <Text style={styles.inputLabel}>Day Hours:</Text>
+                    <Text style={styles.inputLabel}>Total Required Hours:</Text>
                     <TextInput
                       style={styles.numberInput}
                       value={tempDayHours}
                       onChangeText={setTempDayHours}
                       keyboardType="numeric"
-                      placeholder="40"
+                      placeholder="50"
                     />
                   </View>
                   <View style={styles.goalInput}>
-                    <Text style={styles.inputLabel}>Night Hours:</Text>
+                    <Text style={styles.inputLabel}>Night Minimum Hours:</Text>
                     <TextInput
                       style={styles.numberInput}
                       value={tempNightHours}
@@ -281,7 +344,7 @@ export default function SettingsScreen({ navigation }) {
                     />
                   </View>
                   <Text style={styles.goalHelperText}>
-                    Total goal: {(parseFloat(tempDayHours) || 0) + (parseFloat(tempNightHours) || 0)} hours
+                    Night hours count toward the total. Goal: {parseFloat(tempDayHours) || 0} total hours, including {parseFloat(tempNightHours) || 0} at night.
                   </Text>
                   
                   <TouchableOpacity
@@ -294,11 +357,86 @@ export default function SettingsScreen({ navigation }) {
               ) : (
                 <View style={styles.goalsDisplay}>
                   <Text style={styles.goalText}>
-                    Day: {user.goalDayHours} hours | Night: {user.goalNightHours} hours
+                    Total: {user.goalDayHours} hours | Night minimum: {user.goalNightHours} hours
                   </Text>
                   <Text style={styles.goalSubtext}>
-                    Total goal: {user.goalDayHours + user.goalNightHours} hours
+                    Night hours are included in the total requirement.
                   </Text>
+                </View>
+              )}
+            </View>
+          ),
+        },
+        {
+          type: 'custom',
+          component: (
+            <View style={styles.driverInfoContainer}>
+              <View style={styles.settingHeader}>
+                <Text style={styles.settingTitle}>Driver Information</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (editingDriverInfo) {
+                      handleSaveDriverInfo();
+                      return;
+                    }
+                    setTempDriverName(user.driverName || user.fullName || user.name || '');
+                    setTempDateOfBirth(user.dateOfBirth || user.birthDate || user.dob || '');
+                    setTempPermitNumber(user.permitNumber || user.licenseNumber || '');
+                    setEditingDriverInfo(true);
+                  }}
+                  style={styles.editButton}
+                >
+                  <Text style={styles.editButtonText}>
+                    {editingDriverInfo ? 'Save' : 'Edit'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {editingDriverInfo ? (
+                <View style={styles.editDriverInfoContainer}>
+                  <View style={styles.driverInfoInputGroup}>
+                    <Text style={styles.inputLabel}>Driver Name</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={tempDriverName}
+                      onChangeText={setTempDriverName}
+                      placeholder="Full name"
+                      autoCapitalize="words"
+                    />
+                  </View>
+                  <View style={styles.driverInfoInputGroup}>
+                    <Text style={styles.inputLabel}>Date of Birth</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={tempDateOfBirth}
+                      onChangeText={setTempDateOfBirth}
+                      placeholder="MM/DD/YYYY"
+                      keyboardType="numbers-and-punctuation"
+                    />
+                  </View>
+                  <View style={styles.driverInfoInputGroup}>
+                    <Text style={styles.inputLabel}>Permit Number</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={tempPermitNumber}
+                      onChangeText={setTempPermitNumber}
+                      placeholder="Optional"
+                      autoCapitalize="characters"
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={handleCancelDriverInfoEdit}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.driverInfoDisplay}>
+                  <Text style={styles.driverInfoText}>Name: {user.driverName || user.fullName || user.name || 'Not set'}</Text>
+                  <Text style={styles.driverInfoText}>Date of birth: {user.dateOfBirth || user.birthDate || user.dob || 'Not set'}</Text>
+                  <Text style={styles.driverInfoText}>Permit: {user.permitNumber || user.licenseNumber || 'Optional'}</Text>
                 </View>
               )}
             </View>
@@ -492,6 +630,7 @@ export default function SettingsScreen({ navigation }) {
         {
           title: 'App Version',
           value: getAppVersion(),
+          onPress: __DEV__ ? handleAppVersionPress : undefined,
         },
         {
           title: 'Data Storage',
@@ -742,6 +881,11 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   goalsContainer: {},
+  driverInfoContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    paddingTop: 16,
+  },
   settingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -765,6 +909,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   goalsDisplay: {},
+  driverInfoDisplay: {
+    gap: 4,
+  },
+  driverInfoText: {
+    fontSize: 14,
+    color: '#374151',
+  },
   goalText: {
     fontSize: 14,
     color: '#374151',
@@ -780,6 +931,12 @@ const styles = StyleSheet.create({
   },
   editGoalsContainer: {
     gap: 12,
+  },
+  editDriverInfoContainer: {
+    gap: 12,
+  },
+  driverInfoInputGroup: {
+    gap: 6,
   },
   goalInput: {
     flexDirection: 'row',
@@ -798,6 +955,13 @@ const styles = StyleSheet.create({
     padding: 8,
     width: 80,
     textAlign: 'center',
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 14,
   },
   cancelButton: {
     backgroundColor: '#f3f4f6',

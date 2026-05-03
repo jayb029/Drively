@@ -7,7 +7,7 @@ A clean, modern, offline-first mobile app to help users (primarily teens) track 
 ### 🆕 Onboarding
 - License type selection (Learner's Permit, Restricted, Unrestricted)
 - License acquisition date tracking
-- Goal setting with predefined options (25h, 50h + 10 night, custom)
+- Goal setting with predefined options (25h, 50h including 10 at night, custom)
 - Data storage disclaimer and agreement
 
 ### 🚗 Drive Logging

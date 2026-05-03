@@ -13,9 +13,8 @@ export default function DashboardScreen({ navigation }) {
   if (loading) return null;
 
   const totalMinutes = drives.reduce((sum, drive) => sum + drive.duration, 0);
-  const dayGoalMinutes = user.goalDayHours * 60;
+  const totalGoalMinutes = user.goalDayHours * 60;
   const nightGoalMinutes = user.goalNightHours * 60;
-  const dayMinutes = drives.filter((drive) => !drive.isNightDrive).reduce((sum, drive) => sum + drive.duration, 0);
   const nightMinutes = drives.filter((drive) => drive.isNightDrive).reduce((sum, drive) => sum + drive.duration, 0);
   const detectedOpen = detectedEvents.filter((event) => event.status === 'new').length;
   const recentDrives = [...drives].slice(-4).reverse();
@@ -36,12 +35,12 @@ export default function DashboardScreen({ navigation }) {
         <View style={styles.progressCard}>
           <View style={styles.progressHeader}>
             <Text style={styles.cardTitle}>Required Hours</Text>
-            <Text style={styles.cardValue}>{Math.round(((dayMinutes + nightMinutes) / Math.max(dayGoalMinutes + nightGoalMinutes, 1)) * 100)}%</Text>
+            <Text style={styles.cardValue}>{Math.round((totalMinutes / Math.max(totalGoalMinutes, 1)) * 100)}%</Text>
           </View>
           <ProgressRow
-            label="Day"
-            minutes={dayMinutes}
-            goalMinutes={dayGoalMinutes}
+            label="Total"
+            minutes={totalMinutes}
+            goalMinutes={totalGoalMinutes}
             color={theme.colors.primary}
             styles={styles}
           />

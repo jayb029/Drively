@@ -97,6 +97,7 @@ export default function LogDriveScreen({ navigation }) {
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisorProfiles[0]?.id || null);
   const [supervisorName, setSupervisorName] = useState('');
+  const [supervisorDateOfBirth, setSupervisorDateOfBirth] = useState('');
   const [supervisorAge, setSupervisorAge] = useState('');
   const [supervisorLicense, setSupervisorLicense] = useState('');
   const [destination, setDestination] = useState('Practice route');
@@ -192,6 +193,7 @@ export default function LogDriveScreen({ navigation }) {
   const startDrive = async ({ fromDetection = false } = {}) => {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
+      dateOfBirth: supervisorDateOfBirth.trim(),
       age: Number(supervisorAge),
       licenseNumber: supervisorLicense.trim(),
     };
@@ -253,6 +255,7 @@ export default function LogDriveScreen({ navigation }) {
 
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
+      dateOfBirth: supervisorDateOfBirth.trim(),
       age: Number(supervisorAge),
       licenseNumber: supervisorLicense.trim(),
     };
@@ -276,6 +279,7 @@ export default function LogDriveScreen({ navigation }) {
         skills: skills.length ? skills.join(', ') : null,
         supervisorId: selectedSupervisorId,
         supervisorName: supervisor.name || null,
+        supervisorDateOfBirth: supervisor.dateOfBirth || supervisor.birthDate || supervisor.dob || null,
         supervisorAge: supervisor.age || null,
         supervisorLicense: supervisor.licenseNumber || null,
         destination,
@@ -315,6 +319,7 @@ export default function LogDriveScreen({ navigation }) {
     setSkills([]);
     setSourceEventId(null);
     setIsActive(false);
+    setSupervisorDateOfBirth('');
     lastPointRef.current = null;
   };
 
@@ -417,6 +422,14 @@ export default function LogDriveScreen({ navigation }) {
                 placeholderTextColor={theme.colors.text.light}
                 keyboardType="numeric"
                 maxLength={2}
+              />
+              <TextInput
+                style={styles.input}
+                value={supervisorDateOfBirth}
+                onChangeText={setSupervisorDateOfBirth}
+                placeholder="Date of birth"
+                placeholderTextColor={theme.colors.text.light}
+                keyboardType="numbers-and-punctuation"
               />
               <TextInput
                 style={styles.input}
