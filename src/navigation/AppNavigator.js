@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
@@ -160,7 +160,23 @@ function MainTabs() {
 // Main app navigator
 function AppNavigator() {
   const { user, loading } = useDriving();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+  const navigationTheme = React.useMemo(() => {
+    const baseTheme = isDark ? NavigationDarkTheme : NavigationDefaultTheme;
+
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        primary: theme.colors.primary,
+        background: theme.colors.background,
+        card: theme.colors.surface,
+        text: theme.colors.text.primary,
+        border: theme.colors.border.light,
+        notification: theme.colors.error,
+      },
+    };
+  }, [isDark, theme]);
 
   if (loading) {
     // You could show a loading screen here
@@ -178,7 +194,7 @@ function AppNavigator() {
   };
 
   return (
-    <NavigationContainer onStateChange={handleNavigationStateChange}>
+    <NavigationContainer theme={navigationTheme} onStateChange={handleNavigationStateChange}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {

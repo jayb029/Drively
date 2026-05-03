@@ -41,6 +41,8 @@ const DEFAULT_DATA = {
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,
     backgroundLocationStatus: null,
+    storagePermissionStatus: null,
+    exportDirectoryUri: null,
   },
   version: getAppVersion(),
 };

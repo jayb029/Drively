@@ -42,6 +42,7 @@ export default function SettingsScreen({ navigation }) {
   } = useDriving();
 
   const { theme, themeMode, setThemeMode } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
 
   const [editingGoals, setEditingGoals] = useState(false);
   const [tempDayHours, setTempDayHours] = useState(user.goalDayHours.toString());
@@ -331,6 +332,7 @@ export default function SettingsScreen({ navigation }) {
                       onChangeText={setTempDayHours}
                       keyboardType="numeric"
                       placeholder="50"
+                      placeholderTextColor={theme.colors.text.light}
                     />
                   </View>
                   <View style={styles.goalInput}>
@@ -341,6 +343,7 @@ export default function SettingsScreen({ navigation }) {
                       onChangeText={setTempNightHours}
                       keyboardType="numeric"
                       placeholder="10"
+                      placeholderTextColor={theme.colors.text.light}
                     />
                   </View>
                   <Text style={styles.goalHelperText}>
@@ -401,6 +404,7 @@ export default function SettingsScreen({ navigation }) {
                       value={tempDriverName}
                       onChangeText={setTempDriverName}
                       placeholder="Full name"
+                      placeholderTextColor={theme.colors.text.light}
                       autoCapitalize="words"
                     />
                   </View>
@@ -411,6 +415,7 @@ export default function SettingsScreen({ navigation }) {
                       value={tempDateOfBirth}
                       onChangeText={setTempDateOfBirth}
                       placeholder="MM/DD/YYYY"
+                      placeholderTextColor={theme.colors.text.light}
                       keyboardType="numbers-and-punctuation"
                     />
                   </View>
@@ -421,6 +426,7 @@ export default function SettingsScreen({ navigation }) {
                       value={tempPermitNumber}
                       onChangeText={setTempPermitNumber}
                       placeholder="Optional"
+                      placeholderTextColor={theme.colors.text.light}
                       autoCapitalize="characters"
                     />
                   </View>
@@ -584,7 +590,7 @@ export default function SettingsScreen({ navigation }) {
               </View>
 
               <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
-                Notifications: {settings.notificationPermissionStatus || 'not requested'} | Background location: {settings.backgroundLocationStatus || 'not requested'}
+                Notifications: {settings.notificationPermissionStatus || 'not requested'} | Background location: {settings.backgroundLocationStatus || 'not requested'} | Storage: {settings.storagePermissionStatus || 'not requested'}
               </Text>
             </View>
           ),
@@ -807,7 +813,7 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -821,12 +827,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: theme.colors.text.primary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
   },
   section: {
     marginBottom: 24,
@@ -846,10 +852,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: theme.colors.border.light,
   },
   dangerousItem: {
-    backgroundColor: '#fef2f2',
+    backgroundColor: theme.colors.error + '15',
   },
   customItem: {
     padding: 16,
@@ -862,11 +868,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   dangerousText: {
-    color: '#dc2626',
+    color: theme.colors.error,
   },
   settingItemSubtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
     marginTop: 2,
   },
   settingAction: {
@@ -874,16 +880,16 @@ const styles = StyleSheet.create({
   },
   settingValue: {
     fontSize: 14,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
   },
   chevron: {
     fontSize: 18,
-    color: '#9ca3af',
+    color: theme.colors.text.light,
   },
   goalsContainer: {},
   driverInfoContainer: {
     borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    borderTopColor: theme.colors.border.light,
     paddingTop: 16,
   },
   settingHeader: {
@@ -895,16 +901,16 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: theme.colors.text.primary,
   },
   editButton: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
   },
   editButtonText: {
-    color: 'white',
+    color: theme.colors.text.inverse,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -914,20 +920,20 @@ const styles = StyleSheet.create({
   },
   driverInfoText: {
     fontSize: 14,
-    color: '#374151',
+    color: theme.colors.text.primary,
   },
   goalText: {
     fontSize: 14,
-    color: '#374151',
+    color: theme.colors.text.primary,
   },
   goalSubtext: {
     fontSize: 12,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
     marginTop: 4,
   },
   goalHelperText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
   },
   editGoalsContainer: {
     gap: 12,
@@ -945,32 +951,36 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 14,
-    color: '#374151',
+    color: theme.colors.text.primary,
     flex: 1,
   },
   numberInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: theme.colors.border.medium,
+    backgroundColor: theme.colors.surfaceSecondary,
     borderRadius: 6,
     padding: 8,
     width: 80,
     textAlign: 'center',
+    color: theme.colors.text.primary,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: theme.colors.border.medium,
+    backgroundColor: theme.colors.surfaceSecondary,
     borderRadius: 6,
     padding: 10,
     fontSize: 14,
+    color: theme.colors.text.primary,
   },
   cancelButton: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: theme.colors.surfaceSecondary,
     paddingVertical: 8,
     borderRadius: 6,
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -981,12 +991,12 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 16,
-    color: '#374151',
+    color: theme.colors.text.primary,
     marginBottom: 4,
   },
   footerSubtext: {
     fontSize: 14,
-    color: '#6b7280',
+    color: theme.colors.text.secondary,
   },
   themeContainer: {
     gap: 12,
@@ -1083,7 +1093,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   logStatsContainer: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: theme.colors.surfaceSecondary,
     padding: 12,
     borderRadius: 8,
     gap: 4,

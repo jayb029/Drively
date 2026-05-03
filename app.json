@@ -45,7 +45,7 @@
       "package": "com.jaysapps.drively",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0A62A4"
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -56,6 +56,11 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MANAGE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.INTERNET"
       ],
       "predictiveBackGestureEnabled": true,

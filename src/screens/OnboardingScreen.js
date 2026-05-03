@@ -12,6 +12,7 @@ import {
 import * as Location from 'expo-location';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { requestNotificationPermission, requestStoragePermission } from '../utils/permissions';
 
 const LICENSE_TYPES = [
   {
@@ -62,7 +63,7 @@ const GOAL_PRESETS = [
 ];
 
 export default function OnboardingScreen({ navigation }) {
-  const { setUserInfo, completeOnboarding, updateSettings } = useDriving();
+  const { completeOnboarding, updateSettings } = useDriving();
   const { theme } = useTheme();
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
@@ -71,6 +72,7 @@ export default function OnboardingScreen({ navigation }) {
   const [nightHours, setNightHours] = useState('10');
   const [temperatureUnit, setTemperatureUnit] = useState('metric');
   const [hasAgreed, setHasAgreed] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   const parseGoalValues = () => {
     const parsedDay = parseFloat(dayHours);
@@ -131,6 +133,10 @@ export default function OnboardingScreen({ navigation }) {
   };
 
   const handleComplete = async () => {
+    if (isCompleting) {
+      return;
+    }
+
     if (!hasAgreed) {
       Alert.alert('Agreement Required', 'Please agree to the data storage terms to continue.');
       return;
@@ -141,8 +147,35 @@ export default function OnboardingScreen({ navigation }) {
     }
 
     const { day: parsedDayHours, night: parsedNightHours } = parseGoalValues();
+    const userInfo = {
+      licenseType,
+      licenseDate: new Date().toISOString().split('T')[0],
+      goalDayHours: parsedDayHours,
+      goalNightHours: parsedNightHours,
+      completedDayHours: 0,
+      completedNightHours: 0,
+    };
 
-    // Request location permission for weather data
+    setIsCompleting(true);
+
+    const didComplete = await completeOnboarding({
+      userInfo,
+      settings: { temperatureUnit },
+    });
+
+    if (!didComplete) {
+      setIsCompleting(false);
+      Alert.alert('Setup Error', 'Drively could not save your setup. Please try again.');
+      return;
+    }
+
+    requestOnboardingPermissions();
+    // Navigation will happen automatically when onboardingComplete becomes true
+  };
+
+  const requestOnboardingPermissions = async () => {
+    const permissionSettings = {};
+
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -156,22 +189,23 @@ export default function OnboardingScreen({ navigation }) {
       console.log('Location permission error:', error);
     }
 
-    const userInfo = {
-      licenseType,
-      licenseDate: new Date().toISOString().split('T')[0],
-      goalDayHours: parsedDayHours,
-      goalNightHours: parsedNightHours,
-      completedDayHours: 0,
-      completedNightHours: 0,
-    };
+    try {
+      permissionSettings.notificationPermissionStatus = await requestNotificationPermission();
+    } catch (error) {
+      console.log('Notification permission error:', error);
+      permissionSettings.notificationPermissionStatus = 'error';
+    }
 
-    setUserInfo(userInfo);
-    
-    // Set temperature unit preference
-    updateSettings({ temperatureUnit });
-    
-    completeOnboarding();
-    // Navigation will happen automatically when onboardingComplete becomes true
+    try {
+      const storagePermission = await requestStoragePermission();
+      permissionSettings.storagePermissionStatus = storagePermission.status;
+      permissionSettings.exportDirectoryUri = storagePermission.directoryUri;
+    } catch (error) {
+      console.log('Storage permission error:', error);
+      permissionSettings.storagePermissionStatus = 'error';
+    }
+
+    updateSettings(permissionSettings);
   };
 
   const renderStep1 = () => (
@@ -450,12 +484,14 @@ export default function OnboardingScreen({ navigation }) {
           style={[
             styles.continueButton, 
             { backgroundColor: theme.colors.primary },
-            !hasAgreed && [styles.disabledButton, { backgroundColor: theme.colors.gray[400] }]
+            (!hasAgreed || isCompleting) && [styles.disabledButton, { backgroundColor: theme.colors.gray[400] }]
           ]}
           onPress={handleComplete}
-          disabled={!hasAgreed}
+          disabled={!hasAgreed || isCompleting}
         >
-          <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>Get Started</Text>
+          <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>
+            {isCompleting ? 'Starting...' : 'Get Started'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

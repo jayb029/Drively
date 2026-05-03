@@ -18,8 +18,10 @@ import { logError, logUserAction } from '../utils/logger';
 import {
   formatDateForDisplay,
   formatTimeForDisplay,
+  getDateFromDate,
   getCurrentDate,
   getCurrentTime,
+  getTimeFromDate,
   isNightTime,
 } from '../utils/time';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
@@ -52,6 +54,14 @@ const DESTINATIONS = [
   'Errand',
   'Other',
 ];
+
+function getDetectionStartTimestamp(event) {
+  const timestamp = Date.parse(event?.drivingStartedAt || '');
+  const fallbackTimestamp = Date.parse(event?.detectedAt || '');
+  const detectedTimestamp = Number.isFinite(timestamp) ? timestamp : fallbackTimestamp;
+  if (!Number.isFinite(detectedTimestamp)) return null;
+  return detectedTimestamp <= Date.now() ? detectedTimestamp : null;
+}
 
 function distanceMeters(a, b) {
   const radius = 6371000;
@@ -116,6 +126,7 @@ export default function LogDriveScreen({ navigation }) {
   const lastPointRef = useRef(null);
 
   const latestDetectedEvent = detectedEvents?.find((event) => event.status === 'new');
+  const latestDetectionStartTimestamp = getDetectionStartTimestamp(latestDetectedEvent);
   const selectedSupervisor = supervisorProfiles.find((profile) => profile.id === selectedSupervisorId);
   const requiresSupervisor = user.licenseType === 'learners';
 
@@ -190,7 +201,7 @@ export default function LogDriveScreen({ navigation }) {
     setRoutePoints((points) => [...points.slice(-199), point]);
   };
 
-  const startDrive = async ({ fromDetection = false } = {}) => {
+  const startDrive = async ({ detectionEvent = null, fromDetection = false } = {}) => {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
       dateOfBirth: supervisorDateOfBirth.trim(),
@@ -200,24 +211,27 @@ export default function LogDriveScreen({ navigation }) {
 
     if (requiresSupervisor && !supervisor.name) {
       Alert.alert('Supervisor required', 'Choose or enter a supervisor before starting this drive.');
-      return;
+      return false;
     }
 
     if (supervisor.age && supervisor.age < 21) {
       Alert.alert('Invalid supervisor', 'The supervising driver must be at least 21.');
-      return;
+      return false;
     }
 
     const permission = await Location.requestForegroundPermissionsAsync();
     if (permission.status !== 'granted') {
       Alert.alert('Location needed', 'Foreground location is required for live drive tracking.');
-      return;
+      return false;
     }
 
-    setDate(getCurrentDate());
-    setStartTime(getCurrentTime());
-    setStartTimestamp(Date.now());
-    setElapsedMs(0);
+    const detectedStartTimestamp = fromDetection ? getDetectionStartTimestamp(detectionEvent) : null;
+    const nextStartTimestamp = detectedStartTimestamp || Date.now();
+
+    setDate(detectedStartTimestamp ? getDateFromDate(nextStartTimestamp) : getCurrentDate());
+    setStartTime(detectedStartTimestamp ? getTimeFromDate(nextStartTimestamp) : getCurrentTime());
+    setStartTimestamp(nextStartTimestamp);
+    setElapsedMs(Date.now() - nextStartTimestamp);
     setDistance(0);
     setCurrentSpeed(0);
     setMaxSpeed(0);
@@ -234,6 +248,8 @@ export default function LogDriveScreen({ navigation }) {
       },
       handleLocationUpdate
     );
+
+    return true;
   };
 
   const stopDrive = () => {
@@ -323,11 +339,13 @@ export default function LogDriveScreen({ navigation }) {
     lastPointRef.current = null;
   };
 
-  const useDetectedEvent = () => {
+  const useDetectedEvent = async () => {
     if (!latestDetectedEvent) return;
+    const didStart = await startDrive({ detectionEvent: latestDetectedEvent, fromDetection: true });
+    if (!didStart) return;
+
     setSourceEventId(latestDetectedEvent.id);
     updateDetectedEvent({ id: latestDetectedEvent.id, status: 'opened' });
-    startDrive({ fromDetection: true });
   };
 
   const toggleSkill = (skill) => {
@@ -360,6 +378,9 @@ export default function LogDriveScreen({ navigation }) {
               <Text style={styles.noticeTitle}>Detected drive waiting</Text>
               <Text style={styles.noticeBody}>
                 Movement was detected at about {latestDetectedEvent.speedKmh} km/h.
+                {latestDetectionStartTimestamp
+                  ? ` Start time can be backfilled to ${formatTimeForDisplay(getTimeFromDate(latestDetectionStartTimestamp))}.`
+                  : ''}
               </Text>
             </View>
             <TouchableOpacity style={styles.smallButton} onPress={useDetectedEvent}>

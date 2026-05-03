@@ -91,12 +91,34 @@ export function getCurrentTime() {
 }
 
 /**
+ * Get HH:MM time from a timestamp or Date
+ * @param {number|string|Date} value - Timestamp, ISO string, or Date
+ * @returns {string} Local time
+ */
+export function getTimeFromDate(value) {
+  const date = new Date(value);
+  return date.toTimeString().slice(0, 5);
+}
+
+/**
  * Get current date in YYYY-MM-DD format
  * @returns {string} Current date
  */
 export function getCurrentDate() {
-  const now = new Date();
-  return now.toISOString().split('T')[0];
+  return getDateFromDate(new Date());
+}
+
+/**
+ * Get YYYY-MM-DD date from a timestamp or Date using local time
+ * @param {number|string|Date} value - Timestamp, ISO string, or Date
+ * @returns {string} Local date
+ */
+export function getDateFromDate(value) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**

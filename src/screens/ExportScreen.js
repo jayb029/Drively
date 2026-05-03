@@ -13,16 +13,14 @@ import {
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
 import { Platform } from 'react-native';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { exportDataAsJSON, exportDrivesAsCSV } from '../utils/storage';
 import { generatePDFReport } from '../utils/pdf';
-import { formatDateForDisplay } from '../utils/time';
 
 export default function ExportScreen({ navigation }) {
-  const { drives, supervisorProfiles, user, streaks } = useDriving();
+  const { drives, supervisorProfiles, user, streaks, settings, updateSettings } = useDriving();
   const { theme } = useTheme();
   const [exporting, setExporting] = useState(false);
   const [isOfficialPDF, setIsOfficialPDF] = useState(false);
@@ -49,17 +47,16 @@ export default function ExportScreen({ navigation }) {
     try {
       if (Platform.OS === 'android') {
         try {
-          // For Android, use Storage Access Framework
-          const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-          
-          if (!permissions.granted) {
+          const directoryUri = await getAndroidExportDirectoryUri();
+
+          if (!directoryUri) {
             Alert.alert('Permission Required', 'Please grant storage permission to save files.');
             return;
           }
 
           // Create the file in the selected directory
           const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-            permissions.directoryUri,
+            directoryUri,
             fileName,
             mimeType
           );
@@ -131,6 +128,26 @@ export default function ExportScreen({ navigation }) {
       console.error('Save file error:', error);
       throw error;
     }
+  };
+
+  const getAndroidExportDirectoryUri = async () => {
+    if (Platform.OS !== 'android') return null;
+
+    if (settings.exportDirectoryUri) {
+      return settings.exportDirectoryUri;
+    }
+
+    const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (!permissions.granted) {
+      updateSettings({ storagePermissionStatus: 'denied', exportDirectoryUri: null });
+      return null;
+    }
+
+    updateSettings({
+      storagePermissionStatus: 'granted',
+      exportDirectoryUri: permissions.directoryUri,
+    });
+    return permissions.directoryUri;
   };
 
   // Alternative Android save method using Downloads directory
@@ -267,10 +284,9 @@ export default function ExportScreen({ navigation }) {
         
         if (Platform.OS === 'android') {
           try {
-            // For Android, use Storage Access Framework
-            const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-            
-            if (!permissions.granted) {
+            const directoryUri = await getAndroidExportDirectoryUri();
+
+            if (!directoryUri) {
               Alert.alert('Permission Required', 'Please grant storage permission to save files.');
               return;
             }
@@ -282,7 +298,7 @@ export default function ExportScreen({ navigation }) {
 
             // Create the file in the selected directory
             const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-              permissions.directoryUri,
+              directoryUri,
               fileName,
               'application/pdf'
             );

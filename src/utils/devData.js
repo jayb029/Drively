@@ -113,6 +113,8 @@ export function createDevDrivingData(currentSettings = {}) {
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,
     backgroundLocationStatus: null,
+    storagePermissionStatus: null,
+    exportDirectoryUri: null,
     ...currentSettings,
     driveDetectionEnabled: false,
   };

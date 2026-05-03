@@ -87,11 +87,12 @@ function getSpeedKmh(point, previousPoint) {
   return (getDistanceMeters(previousPoint, point) / seconds) * 3.6;
 }
 
-async function recordDetectedEvent(point, speedKmh) {
+async function recordDetectedEvent(point, speedKmh, drivingStartedAt) {
   const data = await loadData();
   const event = {
     id: `detected-${Date.now()}`,
-    detectedAt: new Date().toISOString(),
+    detectedAt: new Date(point.timestamp).toISOString(),
+    drivingStartedAt: new Date(drivingStartedAt || point.timestamp).toISOString(),
     speedKmh: Math.round(speedKmh),
     latitude: point.latitude,
     longitude: point.longitude,
@@ -148,7 +149,7 @@ async function handleLocationBatch(locations) {
     const canRecord = point.timestamp - (state.lastEventAt || 0) > MIN_NOTIFY_INTERVAL_MS;
 
     if (state.movingSince && sustainedMs >= 70 * 1000 && canNotify && canRecord) {
-      const event = await recordDetectedEvent(point, speedKmh);
+      const event = await recordDetectedEvent(point, speedKmh, state.movingSince);
       await notifyDrivingDetected(event, speedKmh);
       state.lastNotificationAt = point.timestamp;
       state.lastEventAt = point.timestamp;

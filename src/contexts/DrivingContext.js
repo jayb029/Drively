@@ -65,6 +65,8 @@ const initialState = {
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,
     backgroundLocationStatus: null,
+    storagePermissionStatus: null,
+    exportDirectoryUri: null,
   },
   loading: true,
   error: null,
