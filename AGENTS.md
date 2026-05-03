@@ -6,7 +6,7 @@ This app is enrolled in EAS Update using `expo-updates`.
 
 - EAS project ID: `3fc48f4e-d36f-4c74-aba9-2f6d337412a4`
 - Update URL: `https://u.expo.dev/3fc48f4e-d36f-4c74-aba9-2f6d337412a4`
-- Android runtime version is currently `1.1.2`.
+- Android runtime version is currently `1.1.3`.
 - EAS build channels are configured in `eas.json`:
   - `development`
   - `preview`

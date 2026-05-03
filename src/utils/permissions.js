@@ -1,15 +1,17 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Notifications from 'expo-notifications';
+import { requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
 
-const ANDROID_STORAGE_PERMISSIONS = [
-  PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-  PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-].filter(Boolean);
+const ANDROID_STORAGE_PERMISSIONS = Platform.OS === 'android' && PermissionsAndroid
+  ? [
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+    ].filter(Boolean)
+  : [];
 
 export async function requestNotificationPermission() {
   try {
-    const result = await Notifications.requestPermissionsAsync();
+    const result = await requestPermissionsAsync();
     return result.status;
   } catch (error) {
     console.log('Notification permission error:', error);

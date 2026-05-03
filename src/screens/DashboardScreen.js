@@ -4,11 +4,13 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateForDisplay, formatDuration } from '../utils/time';
+import { formatDistanceFromKm } from '../utils/units';
 
 export default function DashboardScreen({ navigation }) {
   const { detectedEvents, drives, loading, settings, supervisorProfiles, user } = useDriving();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const distanceUnit = settings.distanceUnit || 'metric';
 
   if (loading) return null;
 
@@ -99,7 +101,7 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={styles.driveTitle}>{formatDateForDisplay(drive.date)}</Text>
                   <Text style={styles.driveMeta}>
                     {drive.startTime} to {drive.endTime}
-                    {drive.routeSummary?.distanceKm ? ` · ${drive.routeSummary.distanceKm} km` : ''}
+                    {drive.routeSummary?.distanceKm ? ` · ${formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)}` : ''}
                   </Text>
                 </View>
                 <Text style={styles.driveDuration}>{formatDuration(drive.duration)}</Text>

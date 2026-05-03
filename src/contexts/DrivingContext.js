@@ -61,6 +61,7 @@ const initialState = {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
+    distanceUnit: 'metric',
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,

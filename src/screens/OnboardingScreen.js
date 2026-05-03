@@ -64,15 +64,23 @@ const GOAL_PRESETS = [
 
 export default function OnboardingScreen({ navigation }) {
   const { completeOnboarding, updateSettings } = useDriving();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
   const [customGoal, setCustomGoal] = useState(false);
   const [dayHours, setDayHours] = useState('50');
   const [nightHours, setNightHours] = useState('10');
+  const [driverName, setDriverName] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [permitNumber, setPermitNumber] = useState('');
   const [temperatureUnit, setTemperatureUnit] = useState('metric');
+  const [distanceUnit, setDistanceUnit] = useState('metric');
   const [hasAgreed, setHasAgreed] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const selectedOptionStyle = {
+    borderColor: theme.colors.primary,
+    backgroundColor: isDark ? theme.colors.surfaceSecondary : '#eff6ff',
+  };
 
   const parseGoalValues = () => {
     const parsedDay = parseFloat(dayHours);
@@ -132,6 +140,10 @@ export default function OnboardingScreen({ navigation }) {
     setStep(3);
   };
 
+  const handleDriverInfoContinue = () => {
+    setStep(4);
+  };
+
   const handleComplete = async () => {
     if (isCompleting) {
       return;
@@ -154,13 +166,16 @@ export default function OnboardingScreen({ navigation }) {
       goalNightHours: parsedNightHours,
       completedDayHours: 0,
       completedNightHours: 0,
+      driverName: driverName.trim(),
+      dateOfBirth: dateOfBirth.trim(),
+      permitNumber: permitNumber.trim(),
     };
 
     setIsCompleting(true);
 
     const didComplete = await completeOnboarding({
       userInfo,
-      settings: { temperatureUnit },
+      settings: { temperatureUnit, distanceUnit },
     });
 
     if (!didComplete) {
@@ -219,13 +234,11 @@ export default function OnboardingScreen({ navigation }) {
         {LICENSE_TYPES.map((type) => (
           <TouchableOpacity
             key={type.id}
+            activeOpacity={1}
             style={[
               styles.optionCard,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-              licenseType === type.id && [styles.selectedOption, { 
-                borderColor: theme.colors.primary, 
-                backgroundColor: theme.colors.primary + '10' 
-              }],
+              licenseType === type.id && [styles.selectedOption, selectedOptionStyle],
             ]}
             onPress={() => handleLicenseSelection(type.id)}
           >
@@ -261,12 +274,13 @@ export default function OnboardingScreen({ navigation }) {
         {GOAL_PRESETS.map((preset) => (
           <TouchableOpacity
             key={preset.id}
+            activeOpacity={1}
             style={[
               styles.goalCard,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
               !customGoal && Number(dayHours) === preset.dayHours && Number(nightHours) === preset.nightHours && [
                 styles.selectedOption, 
-                { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
+                selectedOptionStyle
               ],
             ]}
             onPress={() => handleGoalSelection(preset)}
@@ -278,13 +292,11 @@ export default function OnboardingScreen({ navigation }) {
         ))}
 
         <TouchableOpacity
+          activeOpacity={1}
           style={[
             styles.goalCard,
             { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            customGoal && [styles.selectedOption, { 
-              borderColor: theme.colors.primary, 
-              backgroundColor: theme.colors.primary + '10' 
-            }]
+            customGoal && [styles.selectedOption, selectedOptionStyle]
           ]}
           onPress={() => setCustomGoal(true)}
         >
@@ -365,51 +377,68 @@ export default function OnboardingScreen({ navigation }) {
 
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
-      <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Temperature Preference</Text>
+      <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Driver Information</Text>
       <Text style={[styles.stepSubtitle, { color: theme.colors.text.secondary }]}>
-        Choose how you'd like to see temperature in weather data.
+        This information appears on official exports.
       </Text>
 
-      <View style={styles.optionsContainer}>
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            temperatureUnit === 'metric' && [styles.selectedOption, { 
-              borderColor: theme.colors.primary, 
-              backgroundColor: theme.colors.primary + '10' 
-            }],
-          ]}
-          onPress={() => setTemperatureUnit('metric')}
-        >
-          <Text style={styles.optionIcon}>🌡️</Text>
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Celsius</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Example: 20°C
-            </Text>
-          </View>
-        </TouchableOpacity>
+      <View style={styles.formContainer}>
+        <View style={styles.formGroup}>
+          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Driver Name</Text>
+          <TextInput
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border.light,
+                color: theme.colors.text.primary,
+              },
+            ]}
+            value={driverName}
+            onChangeText={setDriverName}
+            placeholder="Full name"
+            placeholderTextColor={theme.colors.text.light}
+            autoCapitalize="words"
+          />
+        </View>
 
-        <TouchableOpacity
-          style={[
-            styles.optionCard,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
-            temperatureUnit === 'imperial' && [styles.selectedOption, { 
-              borderColor: theme.colors.primary, 
-              backgroundColor: theme.colors.primary + '10' 
-            }],
-          ]}
-          onPress={() => setTemperatureUnit('imperial')}
-        >
-          <Text style={styles.optionIcon}>🌡️</Text>
-          <View style={styles.optionContent}>
-            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Fahrenheit</Text>
-            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
-              Example: 68°F
-            </Text>
-          </View>
-        </TouchableOpacity>
+        <View style={styles.formGroup}>
+          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Date of Birth</Text>
+          <TextInput
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border.light,
+                color: theme.colors.text.primary,
+              },
+            ]}
+            value={dateOfBirth}
+            onChangeText={setDateOfBirth}
+            placeholder="MM/DD/YYYY"
+            placeholderTextColor={theme.colors.text.light}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+
+        <View style={styles.formGroup}>
+          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>Permit Number</Text>
+          <TextInput
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border.light,
+                color: theme.colors.text.primary,
+              },
+            ]}
+            value={permitNumber}
+            onChangeText={setPermitNumber}
+            placeholder="Optional"
+            placeholderTextColor={theme.colors.text.light}
+            autoCapitalize="characters"
+          />
+        </View>
       </View>
 
       <View style={styles.buttonRow}>
@@ -422,7 +451,7 @@ export default function OnboardingScreen({ navigation }) {
 
         <TouchableOpacity
           style={[styles.nextButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => setStep(4)}
+          onPress={handleDriverInfoContinue}
         >
           <Text style={[styles.nextButtonText, { color: theme.colors.text.inverse }]}>Next</Text>
         </TouchableOpacity>
@@ -431,6 +460,105 @@ export default function OnboardingScreen({ navigation }) {
   );
 
   const renderStep4 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Units</Text>
+      <Text style={[styles.stepSubtitle, { color: theme.colors.text.secondary }]}>
+        Choose how Drively displays weather, distance, and speed.
+      </Text>
+
+      <Text style={[styles.optionGroupTitle, { color: theme.colors.text.primary }]}>Temperature</Text>
+      <View style={styles.optionsContainer}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[
+            styles.optionCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
+            temperatureUnit === 'metric' && [styles.selectedOption, selectedOptionStyle],
+          ]}
+          onPress={() => setTemperatureUnit('metric')}
+        >
+          <View style={styles.optionContent}>
+            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Celsius</Text>
+            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
+              Example: 20°C
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[
+            styles.optionCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
+            temperatureUnit === 'imperial' && [styles.selectedOption, selectedOptionStyle],
+          ]}
+          onPress={() => setTemperatureUnit('imperial')}
+        >
+          <View style={styles.optionContent}>
+            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Fahrenheit</Text>
+            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
+              Example: 68°F
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={[styles.optionGroupTitle, { color: theme.colors.text.primary }]}>Distance and Speed</Text>
+      <View style={styles.optionsContainer}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[
+            styles.optionCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
+            distanceUnit === 'metric' && [styles.selectedOption, selectedOptionStyle],
+          ]}
+          onPress={() => setDistanceUnit('metric')}
+        >
+          <View style={styles.optionContent}>
+            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Kilometers</Text>
+            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
+              Distances in km and speeds in km/h
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[
+            styles.optionCard,
+            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light },
+            distanceUnit === 'imperial' && [styles.selectedOption, selectedOptionStyle],
+          ]}
+          onPress={() => setDistanceUnit('imperial')}
+        >
+          <View style={styles.optionContent}>
+            <Text style={[styles.optionTitle, { color: theme.colors.text.primary }]}>Miles</Text>
+            <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>
+              Distances in mi and speeds in mph
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity
+          style={[styles.backButton, { borderColor: theme.colors.border.medium }]}
+          onPress={() => setStep(3)}
+        >
+          <Text style={[styles.backButtonText, { color: theme.colors.text.secondary }]}>Back</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.nextButton, { backgroundColor: theme.colors.primary }]}
+          onPress={() => setStep(5)}
+        >
+          <Text style={[styles.nextButtonText, { color: theme.colors.text.inverse }]}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderStep5 = () => (
     <View style={styles.stepContainer}>
       <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Important Notice</Text>
       
@@ -475,7 +603,7 @@ export default function OnboardingScreen({ navigation }) {
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.backButton, { borderColor: theme.colors.border.medium }]}
-          onPress={() => setStep(3)}
+          onPress={() => setStep(4)}
         >
           <Text style={[styles.backButtonText, { color: theme.colors.text.secondary }]}>Back</Text>
         </TouchableOpacity>
@@ -501,11 +629,11 @@ export default function OnboardingScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={[styles.logo, { color: theme.colors.primary }]}>🛣️ Drively</Text>
+          <Text style={[styles.logo, { color: theme.colors.primary }]}>Drively</Text>
           <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>Your driving companion</Text>
           
           <View style={styles.progressContainer}>
-            {[1, 2, 3, 4].map((num) => (
+            {[1, 2, 3, 4, 5].map((num) => (
               <View
                 key={num}
                 style={[
@@ -522,6 +650,7 @@ export default function OnboardingScreen({ navigation }) {
         {step === 2 && renderStep2()}
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
+        {step === 5 && renderStep5()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -601,11 +730,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   selectedOption: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   optionIcon: {
     fontSize: 40,
@@ -650,6 +777,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 12,
   },
+  formContainer: {
+    gap: 16,
+    marginBottom: 32,
+  },
+  formGroup: {
+    gap: 6,
+  },
+  textInput: {
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 16,
+  },
   goalInputRow: {
     flexDirection: 'row',
     gap: 12,
@@ -671,6 +811,11 @@ const styles = StyleSheet.create({
   customGoalHint: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  optionGroupTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
   },
   noticeContainer: {
     padding: 24,

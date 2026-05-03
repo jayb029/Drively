@@ -10,10 +10,13 @@ import {
   TextInput,
   Alert,
   Share,
+  Platform,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme, THEME_MODES } from '../contexts/ThemeContext';
-import { clearAllData } from '../utils/storage';
+import { clearAllData, importDataFromJSON } from '../utils/storage';
 import { getAppVersion } from '../utils/appInfo';
 import { createDevDrivingData } from '../utils/devData';
 import {
@@ -22,6 +25,7 @@ import {
   startDriveDetection,
   stopDriveDetection,
 } from '../services/driveDetection';
+import * as Updates from 'expo-updates';
 import { 
   getLogStats, 
   clearLogs, 
@@ -57,6 +61,9 @@ export default function SettingsScreen({ navigation }) {
   const [showDebugDetails, setShowDebugDetails] = useState(false);
   const [driveDetectionRunning, setDriveDetectionRunning] = useState(false);
   const [updatingDetection, setUpdatingDetection] = useState(false);
+  const [checkingForUpdate, setCheckingForUpdate] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState(null);
   const [versionTapCount, setVersionTapCount] = useState(0);
 
   useEffect(() => {
@@ -141,6 +148,63 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  const readPickedFile = async (asset) => {
+    if (Platform.OS === 'web') {
+      const response = await fetch(asset.uri);
+      return response.text();
+    }
+
+    return FileSystem.readAsStringAsync(asset.uri);
+  };
+
+  const handleImportJSON = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!asset) {
+        Alert.alert('Import Failed', 'No backup file was selected.');
+        return;
+      }
+
+      const fileContents = await readPickedFile(asset);
+      const importedData = await importDataFromJSON(fileContents);
+
+      if (!importedData) {
+        Alert.alert('Import Failed', 'That file is not a valid Drively JSON backup.');
+        return;
+      }
+
+      Alert.alert(
+        'Import Backup',
+        'This will replace your current local Drively data with the selected backup.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Import',
+            onPress: () => {
+              replaceData(importedData);
+              logUserAction('import_json_backup', 'SETTINGS', {
+                drivesCount: importedData.drives?.length || 0,
+              });
+              Alert.alert('Backup Imported', 'Your Drively backup has been restored.');
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Import JSON error:', error);
+      Alert.alert('Import Failed', 'Unable to import that backup file.');
+    }
+  };
+
   const loadDevData = () => {
     if (!__DEV__) return;
 
@@ -209,6 +273,75 @@ export default function SettingsScreen({ navigation }) {
       Alert.alert('Tracking Error', 'Could not update drive detection. Try again from a development or release build.');
     } finally {
       setUpdatingDetection(false);
+    }
+  };
+
+  const formatUpdateDate = (date) => {
+    if (!date) return 'Embedded build';
+    return date.toLocaleString();
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (!Updates.isEnabled || __DEV__) {
+      Alert.alert(
+        'Updates Unavailable',
+        'OTA updates can only be checked from an installed preview or production build.'
+      );
+      return;
+    }
+
+    try {
+      setCheckingForUpdate(true);
+      setUpdateStatus('Checking for updates...');
+      const result = await Updates.checkForUpdateAsync();
+
+      if (result.isAvailable || result.isRollBackToEmbedded) {
+        setUpdateStatus('Update available. Tap Update Now to download and apply it.');
+        Alert.alert('Update Available', 'A new update is available. Tap Update Now to install it.');
+        return;
+      }
+
+      setUpdateStatus('You are up to date.');
+      Alert.alert('No Update Available', 'You are already running the latest available update.');
+    } catch (error) {
+      setUpdateStatus('Could not check for updates.');
+      Alert.alert('Update Check Failed', 'Could not check for updates. Try again later from a preview or production build.');
+    } finally {
+      setCheckingForUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    if (!Updates.isEnabled || __DEV__) {
+      Alert.alert(
+        'Updates Unavailable',
+        'OTA updates can only be installed from an installed preview or production build.'
+      );
+      return;
+    }
+
+    try {
+      setApplyingUpdate(true);
+      setUpdateStatus('Downloading update...');
+      const result = await Updates.fetchUpdateAsync();
+
+      if (result.isNew || result.isRollBackToEmbedded) {
+        setUpdateStatus('Update downloaded. Restarting...');
+        logUserAction('apply_ota_update', 'SETTINGS', {
+          channel: Updates.channel,
+          runtimeVersion: Updates.runtimeVersion,
+        });
+        await Updates.reloadAsync();
+        return;
+      }
+
+      setUpdateStatus('No new update is ready to install.');
+      Alert.alert('No Update Available', 'There is no new update ready to install.');
+    } catch (error) {
+      setUpdateStatus('Could not install update.');
+      Alert.alert('Update Failed', 'Could not download or apply the update. Try again later.');
+    } finally {
+      setApplyingUpdate(false);
     }
   };
 
@@ -532,6 +665,49 @@ export default function SettingsScreen({ navigation }) {
             </View>
           ),
         },
+        {
+          type: 'custom',
+          component: (
+            <View style={styles.temperatureContainer}>
+              <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>Distance and Speed Unit</Text>
+              <Text style={[styles.settingSubtitle, { color: theme.colors.text.secondary }]}>Choose how to display mileage and speed</Text>
+              <View style={styles.temperatureOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.temperatureOption,
+                    { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border.light },
+                    (settings.distanceUnit || 'metric') === 'metric' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
+                  ]}
+                  onPress={() => updateSettings({ distanceUnit: 'metric' })}
+                >
+                  <Text style={[
+                    styles.temperatureOptionText,
+                    { color: theme.colors.text.secondary },
+                    (settings.distanceUnit || 'metric') === 'metric' && { color: theme.colors.primary }
+                  ]}>
+                    Kilometers and km/h
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.temperatureOption,
+                    { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border.light },
+                    settings.distanceUnit === 'imperial' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary + '10' }
+                  ]}
+                  onPress={() => updateSettings({ distanceUnit: 'imperial' })}
+                >
+                  <Text style={[
+                    styles.temperatureOptionText,
+                    { color: theme.colors.text.secondary },
+                    settings.distanceUnit === 'imperial' && { color: theme.colors.primary }
+                  ]}>
+                    Miles and mph
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ),
+        },
       ],
     },
     {
@@ -612,21 +788,15 @@ export default function SettingsScreen({ navigation }) {
           onPress: () => navigation.navigate('Export'),
         },
         {
-          type: 'custom',
-          component: (
-            <TouchableOpacity
-              style={[styles.resetButton, { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error }]}
-              onPress={handleResetData}
-            >
-              <View style={styles.resetButtonContent}>
-                <Text style={[styles.resetButtonIcon, { color: theme.colors.error }]}>⚠️</Text>
-                <View style={styles.resetButtonText}>
-                  <Text style={[styles.resetButtonTitle, { color: theme.colors.error }]}>Reset All Data</Text>
-                  <Text style={[styles.resetButtonSubtitle, { color: theme.colors.text.secondary }]}>Permanently delete all data</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ),
+          title: 'Import Backup',
+          subtitle: 'Restore a Drively JSON backup file',
+          onPress: handleImportJSON,
+        },
+        {
+          title: 'Reset All Data',
+          subtitle: 'Permanently delete all data',
+          dangerous: true,
+          onPress: handleResetData,
         },
       ],
     },
@@ -637,6 +807,57 @@ export default function SettingsScreen({ navigation }) {
           title: 'App Version',
           value: getAppVersion(),
           onPress: __DEV__ ? handleAppVersionPress : undefined,
+        },
+        {
+          type: 'custom',
+          component: (
+            <View style={styles.updateContainer}>
+              <View>
+                <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>App Updates</Text>
+                <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
+                  Channel: {Updates.channel || 'not available'} | Runtime: {Updates.runtimeVersion || 'not available'}
+                </Text>
+                <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
+                  Current update: {formatUpdateDate(Updates.createdAt)}
+                </Text>
+                {updateStatus && (
+                  <Text style={[styles.updateStatusText, { color: theme.colors.text.secondary }]}>
+                    {updateStatus}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.updateActionsContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.updateButton,
+                    { backgroundColor: theme.colors.surfaceSecondary, borderColor: theme.colors.border.light },
+                    checkingForUpdate && { opacity: 0.6 },
+                  ]}
+                  onPress={handleCheckForUpdates}
+                  disabled={checkingForUpdate || applyingUpdate}
+                >
+                  <Text style={[styles.updateButtonText, { color: theme.colors.text.primary }]}>
+                    {checkingForUpdate ? 'Checking...' : 'Check for Updates'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.updateButton,
+                    { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary },
+                    applyingUpdate && { opacity: 0.6 },
+                  ]}
+                  onPress={handleApplyUpdate}
+                  disabled={checkingForUpdate || applyingUpdate}
+                >
+                  <Text style={[styles.updateButtonText, { color: theme.colors.primary }]}>
+                    {applyingUpdate ? 'Updating...' : 'Update Now'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ),
         },
         {
           title: 'Data Storage',
@@ -750,7 +971,7 @@ export default function SettingsScreen({ navigation }) {
           item.dangerous && { backgroundColor: theme.colors.error + '15' },
         ]}
         onPress={item.onPress}
-        disabled={!item.onPress}
+        disabled={!item.onPress && item.type !== 'switch'}
       >
         <View style={styles.settingContent}>
           <Text style={[
@@ -802,10 +1023,7 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: theme.colors.text.primary }]}>
-            🛣️ Drively - Your offline driving companion
-          </Text>
-          <Text style={[styles.footerSubtext, { color: theme.colors.text.secondary }]}>
-            Made with ❤️ for safe driving
+            Drively
           </Text>
         </View>
       </ScrollView>
@@ -859,6 +1077,8 @@ const createStyles = (theme) => StyleSheet.create({
   },
   customItem: {
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border.light,
   },
   settingContent: {
     flex: 1,
@@ -1058,6 +1278,32 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 13,
     marginTop: -4,
     marginBottom: 8,
+  },
+  updateContainer: {
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border.light,
+    paddingTop: 16,
+  },
+  updateStatusText: {
+    fontSize: 13,
+    marginTop: 8,
+  },
+  updateActionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  updateButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  updateButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   // Reset button styles
   resetButton: {

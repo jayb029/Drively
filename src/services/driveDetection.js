@@ -1,7 +1,11 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
+import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications/build/NotificationChannelManager.types';
+import { requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
+import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync';
+import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler';
+import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync';
 import * as TaskManager from 'expo-task-manager';
 import { loadData, saveData } from '../utils/storage';
 
@@ -17,7 +21,7 @@ const SPEED_THRESHOLDS_KMH = {
   sensitive: 18,
 };
 
-Notifications.setNotificationHandler({
+setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -110,7 +114,7 @@ async function recordDetectedEvent(point, speedKmh, drivingStartedAt) {
 }
 
 async function notifyDrivingDetected(event, speedKmh) {
-  await Notifications.scheduleNotificationAsync({
+  await scheduleNotificationAsync({
     content: {
       title: 'Driving detected',
       body: `Drively detected movement near ${Math.round(speedKmh)} km/h. Open the app to start or confirm a drive log.`,
@@ -173,12 +177,12 @@ if (!TaskManager.isTaskDefined(DRIVE_DETECTION_TASK)) {
 
 export async function configureDriveNotifications() {
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+    await setNotificationChannelAsync(CHANNEL_ID, {
       name: 'Drive detection',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#0f766e',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: AndroidNotificationVisibility.PUBLIC,
     });
   }
 }
@@ -187,7 +191,7 @@ export async function requestDriveDetectionPermissions() {
   await configureDriveNotifications();
 
   const foreground = await Location.requestForegroundPermissionsAsync();
-  const notifications = await Notifications.requestPermissionsAsync();
+  const notifications = await requestPermissionsAsync();
 
   let background = { status: 'undetermined' };
   if (foreground.status === 'granted') {

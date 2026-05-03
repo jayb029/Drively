@@ -2,6 +2,8 @@
  * Utility functions for time calculations and formatting
  */
 
+const DATE_OF_BIRTH_MIN_YEAR = 1949;
+
 /**
  * Check if a given time falls within night hours
  * @param {string} time - Time in HH:MM format
@@ -171,17 +173,115 @@ export function isValidDate(date) {
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRegex.test(date)) return false;
   
-  const parsedDate = new Date(date);
-  return !isNaN(parsedDate.getTime());
+  return parseDateString(date) !== null;
+}
+
+function parseDateString(date) {
+  if (!date) return null;
+
+  const trimmed = String(date).trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const dashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+
+  let year;
+  let month;
+  let day;
+
+  if (isoMatch) {
+    year = Number(isoMatch[1]);
+    month = Number(isoMatch[2]);
+    day = Number(isoMatch[3]);
+  } else if (slashMatch || dashMatch) {
+    const match = slashMatch || dashMatch;
+    month = Number(match[1]);
+    day = Number(match[2]);
+    year = Number(match[3]);
+  } else {
+    return null;
+  }
+
+  const parsedDate = new Date(year, month - 1, day);
+  if (
+    parsedDate.getFullYear() !== year ||
+    parsedDate.getMonth() !== month - 1 ||
+    parsedDate.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsedDate;
+}
+
+/**
+ * Format typed date of birth digits as MM/DD/YYYY.
+ * @param {string} value - Raw date input
+ * @returns {string} Formatted date input
+ */
+export function formatDateOfBirthInput(value) {
+  const trimmed = String(value || '').trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
+  }
+
+  const digits = trimmed.replace(/[^0-9]/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+/**
+ * Format a Date object as MM/DD/YYYY.
+ * @param {Date} date - Date object
+ * @returns {string} Formatted date
+ */
+export function formatDateOfBirthFromDate(date) {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${date.getFullYear()}`;
+}
+
+/**
+ * Parse a date of birth string into a Date object.
+ * @param {string} date - Birth date string
+ * @returns {Date|null} Parsed date
+ */
+export function getDateOfBirthDate(date) {
+  return parseDateString(date);
+}
+
+/**
+ * Get the earliest selectable date of birth.
+ * @returns {Date} Minimum date of birth
+ */
+export function getMinimumDateOfBirthDate() {
+  return new Date(DATE_OF_BIRTH_MIN_YEAR, 0, 1);
+}
+
+/**
+ * Validate date of birth format
+ * @param {string} date - Date string to validate
+ * @returns {boolean} Whether date is a valid past date
+ */
+export function isValidDateOfBirth(date) {
+  const parsedDate = parseDateString(date);
+  if (!parsedDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsedDate <= today;
 }
 
 /**
  * Get age from date of birth
- * @param {string} birthDate - Birth date in YYYY-MM-DD format
- * @returns {number} Age in years
+ * @param {string} birthDate - Birth date in YYYY-MM-DD or MM/DD/YYYY format
+ * @returns {number|null} Age in years
  */
 export function calculateAge(birthDate) {
-  const birth = new Date(birthDate);
+  const birth = parseDateString(birthDate);
+  if (!birth) return null;
+
   const today = new Date();
   
   let age = today.getFullYear() - birth.getFullYear();

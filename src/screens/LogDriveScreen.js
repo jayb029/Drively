@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
@@ -17,14 +18,20 @@ import { useTheme } from '../contexts/ThemeContext';
 import { logError, logUserAction } from '../utils/logger';
 import {
   formatDateForDisplay,
+  formatDateOfBirthFromDate,
   formatTimeForDisplay,
+  calculateAge,
   getDateFromDate,
+  getDateOfBirthDate,
+  getMinimumDateOfBirthDate,
   getCurrentDate,
   getCurrentTime,
   getTimeFromDate,
+  isValidDateOfBirth,
   isNightTime,
 } from '../utils/time';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
+import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 
 const WEATHER_OPTIONS = [
   'Clear',
@@ -96,6 +103,7 @@ export default function LogDriveScreen({ navigation }) {
   } = useDriving();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const distanceUnit = settings.distanceUnit || 'metric';
 
   const [date, setDate] = useState(getCurrentDate());
   const [startTime, setStartTime] = useState(null);
@@ -108,7 +116,6 @@ export default function LogDriveScreen({ navigation }) {
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisorProfiles[0]?.id || null);
   const [supervisorName, setSupervisorName] = useState('');
   const [supervisorDateOfBirth, setSupervisorDateOfBirth] = useState('');
-  const [supervisorAge, setSupervisorAge] = useState('');
   const [supervisorLicense, setSupervisorLicense] = useState('');
   const [destination, setDestination] = useState('Practice route');
   const [weather, setWeather] = useState('');
@@ -129,6 +136,7 @@ export default function LogDriveScreen({ navigation }) {
   const latestDetectionStartTimestamp = getDetectionStartTimestamp(latestDetectedEvent);
   const selectedSupervisor = supervisorProfiles.find((profile) => profile.id === selectedSupervisorId);
   const requiresSupervisor = user.licenseType === 'learners';
+  const enteredSupervisorAge = calculateAge(supervisorDateOfBirth);
 
   useEffect(() => {
     loadWeather();
@@ -205,7 +213,7 @@ export default function LogDriveScreen({ navigation }) {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
       dateOfBirth: supervisorDateOfBirth.trim(),
-      age: Number(supervisorAge),
+      age: enteredSupervisorAge,
       licenseNumber: supervisorLicense.trim(),
     };
 
@@ -214,7 +222,13 @@ export default function LogDriveScreen({ navigation }) {
       return false;
     }
 
-    if (supervisor.age && supervisor.age < 21) {
+    if (!selectedSupervisor && supervisor.dateOfBirth && !isValidDateOfBirth(supervisor.dateOfBirth)) {
+      Alert.alert('Invalid date of birth', 'Enter the supervisor date of birth as MM/DD/YYYY.');
+      return false;
+    }
+
+    const supervisorAge = getSupervisorAge(supervisor);
+    if (supervisorAge !== null && supervisorAge < 21) {
       Alert.alert('Invalid supervisor', 'The supervising driver must be at least 21.');
       return false;
     }
@@ -272,9 +286,10 @@ export default function LogDriveScreen({ navigation }) {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
       dateOfBirth: supervisorDateOfBirth.trim(),
-      age: Number(supervisorAge),
+      age: enteredSupervisorAge,
       licenseNumber: supervisorLicense.trim(),
     };
+    const supervisorAge = getSupervisorAge(supervisor);
     const duration = Math.max(1, Math.round(elapsedMs / 60000));
     const isNightDrive =
       isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
@@ -296,7 +311,7 @@ export default function LogDriveScreen({ navigation }) {
         supervisorId: selectedSupervisorId,
         supervisorName: supervisor.name || null,
         supervisorDateOfBirth: supervisor.dateOfBirth || supervisor.birthDate || supervisor.dob || null,
-        supervisorAge: supervisor.age || null,
+        supervisorAge,
         supervisorLicense: supervisor.licenseNumber || null,
         destination,
         source: sourceEventId ? 'detected' : 'manual',
@@ -354,6 +369,19 @@ export default function LogDriveScreen({ navigation }) {
     );
   };
 
+  const openSupervisorDateOfBirthPicker = () => {
+    DateTimePickerAndroid.open({
+      value: getDateOfBirthDate(supervisorDateOfBirth) || new Date(1980, 0, 1),
+      mode: 'date',
+      minimumDate: getMinimumDateOfBirthDate(),
+      maximumDate: new Date(),
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) return;
+        setSupervisorDateOfBirth(formatDateOfBirthFromDate(selectedDate));
+      },
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -377,7 +405,7 @@ export default function LogDriveScreen({ navigation }) {
             <View style={styles.noticeText}>
               <Text style={styles.noticeTitle}>Detected drive waiting</Text>
               <Text style={styles.noticeBody}>
-                Movement was detected at about {latestDetectedEvent.speedKmh} km/h.
+                Movement was detected at about {formatSpeedFromKmh(latestDetectedEvent.speedKmh, distanceUnit)}.
                 {latestDetectionStartTimestamp
                   ? ` Start time can be backfilled to ${formatTimeForDisplay(getTimeFromDate(latestDetectionStartTimestamp))}.`
                   : ''}
@@ -391,8 +419,8 @@ export default function LogDriveScreen({ navigation }) {
 
         <View style={styles.metrics}>
           <Metric label="Elapsed" value={formatElapsed(elapsedMs)} icon="timer-outline" theme={theme} />
-          <Metric label="Distance" value={`${(distance / 1000).toFixed(2)} km`} icon="map-marker-distance" theme={theme} />
-          <Metric label="Speed" value={`${Math.round(currentSpeed)} km/h`} icon="speedometer" theme={theme} />
+          <Metric label="Distance" value={formatDistanceFromKm(distance / 1000, distanceUnit)} icon="map-marker-distance" theme={theme} />
+          <Metric label="Speed" value={formatSpeedFromKmh(currentSpeed, distanceUnit)} icon="speedometer" theme={theme} />
         </View>
 
         <Section title="Supervisor" styles={styles}>
@@ -435,23 +463,16 @@ export default function LogDriveScreen({ navigation }) {
                 placeholder="Supervisor name"
                 placeholderTextColor={theme.colors.text.light}
               />
-              <TextInput
-                style={styles.input}
-                value={supervisorAge}
-                onChangeText={(value) => setSupervisorAge(value.replace(/[^0-9]/g, ''))}
-                placeholder="Age"
-                placeholderTextColor={theme.colors.text.light}
-                keyboardType="numeric"
-                maxLength={2}
-              />
-              <TextInput
-                style={styles.input}
-                value={supervisorDateOfBirth}
-                onChangeText={setSupervisorDateOfBirth}
-                placeholder="Date of birth"
-                placeholderTextColor={theme.colors.text.light}
-                keyboardType="numbers-and-punctuation"
-              />
+              <TouchableOpacity style={styles.datePickerButton} onPress={openSupervisorDateOfBirthPicker}>
+                <Text style={[styles.datePickerText, !supervisorDateOfBirth && styles.datePickerPlaceholder]}>
+                  {supervisorDateOfBirth || 'Date of birth'}
+                </Text>
+                <Icon name="calendar-month-outline" size={20} color={theme.colors.text.secondary} />
+              </TouchableOpacity>
+              <View style={styles.calculatedField}>
+                <Text style={styles.calculatedLabel}>Age</Text>
+                <Text style={styles.calculatedValue}>{enteredSupervisorAge === null ? 'Enter DOB' : String(enteredSupervisorAge)}</Text>
+              </View>
               <TextInput
                 style={styles.input}
                 value={supervisorLicense}
@@ -517,7 +538,7 @@ export default function LogDriveScreen({ navigation }) {
           <View style={styles.summary}>
             <Text style={styles.summaryText}>Started {formatTimeForDisplay(startTime)}</Text>
             {endTime && <Text style={styles.summaryText}>Ended {formatTimeForDisplay(endTime)}</Text>}
-            <Text style={styles.summaryText}>Max speed {Math.round(maxSpeed)} km/h</Text>
+            <Text style={styles.summaryText}>Max speed {formatSpeedFromKmh(maxSpeed, distanceUnit)}</Text>
           </View>
         )}
       </ScrollView>
@@ -572,6 +593,10 @@ function ChoiceList({ multi, onChange, styles, value, values }) {
       })}
     </View>
   );
+}
+
+function getSupervisorAge(supervisor) {
+  return calculateAge(supervisor.dateOfBirth || supervisor.birthDate || supervisor.dob) ?? supervisor.age ?? null;
 }
 
 function createStyles(theme) {
@@ -705,6 +730,47 @@ function createStyles(theme) {
       color: theme.colors.text.primary,
       backgroundColor: theme.colors.surfaceSecondary,
       fontSize: 15,
+    },
+    datePickerButton: {
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      backgroundColor: theme.colors.surfaceSecondary,
+    },
+    datePickerText: {
+      flex: 1,
+      color: theme.colors.text.primary,
+      fontSize: 15,
+    },
+    datePickerPlaceholder: {
+      color: theme.colors.text.light,
+    },
+    calculatedField: {
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      justifyContent: 'center',
+      backgroundColor: theme.colors.surfaceSecondary,
+    },
+    calculatedLabel: {
+      color: theme.colors.text.secondary,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+    },
+    calculatedValue: {
+      color: theme.colors.text.primary,
+      fontSize: 15,
+      fontWeight: '700',
+      marginTop: 2,
     },
     profileMenuButton: {
       minHeight: 44,

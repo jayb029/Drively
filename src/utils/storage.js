@@ -1,9 +1,13 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { getAppVersion } from './appInfo';
+import { getDistanceUnitLabel, getSpeedUnitLabel } from './units';
 
 const DATA_DIR = `${FileSystem.documentDirectory}drively/`;
 const MAIN_DATA_FILE = `${DATA_DIR}data.json`;
 const BACKUP_DATA_FILE = `${DATA_DIR}backup.json`;
+const WEB_DATA_KEY = 'drively.data.v1';
 
 /**
  * Default data structure for a new user
@@ -37,6 +41,7 @@ const DEFAULT_DATA = {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric',
+    distanceUnit: 'metric',
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,
@@ -86,6 +91,27 @@ async function ensureDirectoryExists() {
  * Load data from the main file, fallback to backup if corrupted
  */
 export async function loadData() {
+  if (Platform.OS === 'web') {
+    try {
+      const dataString = await AsyncStorage.getItem(WEB_DATA_KEY);
+      if (!dataString) {
+        await saveData(DEFAULT_DATA);
+        return migrateData(DEFAULT_DATA);
+      }
+
+      const data = JSON.parse(dataString);
+      if (!data.user || !data.drives || !data.streaks || !data.settings) {
+        throw new Error('Invalid data structure');
+      }
+
+      return migrateData(data);
+    } catch (error) {
+      console.warn('Web data unavailable, using defaults:', error);
+      await saveData(DEFAULT_DATA);
+      return migrateData(DEFAULT_DATA);
+    }
+  }
+
   try {
     await ensureDirectoryExists();
     
@@ -133,6 +159,16 @@ export async function loadData() {
  * Save data to main file and create backup
  */
 export async function saveData(data) {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(migrateData(data)));
+      return true;
+    } catch (error) {
+      console.error('Failed to save web data:', error);
+      return false;
+    }
+  }
+
   try {
     await ensureDirectoryExists();
     
@@ -170,12 +206,32 @@ export async function exportDataAsJSON() {
 }
 
 /**
+ * Parse and validate data from a Drively JSON backup string.
+ */
+export async function importDataFromJSON(jsonString) {
+  try {
+    const data = JSON.parse(jsonString);
+
+    if (!data.user || !data.drives || !data.streaks || !data.settings) {
+      throw new Error('Invalid backup format');
+    }
+
+    return migrateData(data);
+  } catch (error) {
+    console.error('Failed to import data from JSON:', error);
+    return null;
+  }
+}
+
+/**
  * Export drives data as CSV string
  */
 export async function exportDrivesAsCSV() {
   try {
     const data = await loadData();
     const drives = data.drives;
+    const distanceUnit = data.settings?.distanceUnit || 'metric';
+    const distanceMultiplier = distanceUnit === 'imperial' ? 0.621371 : 1;
     
     if (drives.length === 0) {
       return 'No drives to export';
@@ -195,8 +251,8 @@ export async function exportDrivesAsCSV() {
       'Supervisor Age',
       'Supervisor License',
       'Destination',
-      'Distance (km)',
-      'Average Speed (km/h)',
+      `Distance (${getDistanceUnitLabel(distanceUnit)})`,
+      `Average Speed (${getSpeedUnitLabel(distanceUnit)})`,
       'Detection Source'
     ];
     
@@ -214,8 +270,8 @@ export async function exportDrivesAsCSV() {
       drive.supervisorAge || '',
       drive.supervisorLicense || '',
       drive.destination || '',
-      drive.routeSummary?.distanceKm || '',
-      drive.routeSummary?.averageSpeedKmh || '',
+      drive.routeSummary?.distanceKm ? Number((drive.routeSummary.distanceKm * distanceMultiplier).toFixed(2)) : '',
+      drive.routeSummary?.averageSpeedKmh ? Math.round(drive.routeSummary.averageSpeedKmh * distanceMultiplier) : '',
       drive.source || 'manual'
     ]);
     
@@ -235,6 +291,16 @@ export async function exportDrivesAsCSV() {
  * Clear all data (for testing or reset)
  */
 export async function clearAllData() {
+  if (Platform.OS === 'web') {
+    try {
+      await AsyncStorage.removeItem(WEB_DATA_KEY);
+      return true;
+    } catch (error) {
+      console.error('Failed to clear web data:', error);
+      return false;
+    }
+  }
+
   try {
     await ensureDirectoryExists();
     

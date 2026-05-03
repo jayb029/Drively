@@ -11,10 +11,19 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Svg, { Path } from 'react-native-svg';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import {
+  calculateAge,
+  formatDateOfBirthFromDate,
+  formatDateOfBirthInput,
+  getDateOfBirthDate,
+  getMinimumDateOfBirthDate,
+  isValidDateOfBirth,
+} from '../utils/time';
 
 const SIGNATURE_HEIGHT = 160;
 
@@ -22,7 +31,6 @@ const emptyForm = {
   name: '',
   relationship: '',
   dateOfBirth: '',
-  age: '',
   licenseNumber: '',
   phone: '',
   signature: null,
@@ -103,8 +111,7 @@ export default function SupervisorProfilesScreen() {
     setForm({
       name: profile.name || '',
       relationship: profile.relationship || '',
-      dateOfBirth: profile.dateOfBirth || profile.birthDate || profile.dob || '',
-      age: profile.age ? String(profile.age) : '',
+      dateOfBirth: formatDateOfBirthInput(profile.dateOfBirth || profile.birthDate || profile.dob || ''),
       licenseNumber: profile.licenseNumber || '',
       phone: profile.phone || '',
       signature: profile.signature || null,
@@ -125,12 +132,12 @@ export default function SupervisorProfilesScreen() {
   };
 
   const buildPayload = (signature) => {
-    const age = Number(form.age);
+    const calculatedAge = calculateAge(form.dateOfBirth);
     return {
       name: form.name.trim(),
       relationship: form.relationship.trim() || 'Supervisor',
       dateOfBirth: form.dateOfBirth.trim() || null,
-      age: form.age ? age : null,
+      age: calculatedAge,
       licenseNumber: form.licenseNumber.trim() || null,
       phone: form.phone.trim() || null,
       signature,
@@ -140,14 +147,20 @@ export default function SupervisorProfilesScreen() {
 
   const validateForm = () => {
     const name = form.name.trim();
-    const age = Number(form.age);
+    const dateOfBirth = form.dateOfBirth.trim();
+    const calculatedAge = calculateAge(dateOfBirth);
 
     if (!name) {
       Alert.alert('Name required', 'Enter the supervisor name.');
       return false;
     }
 
-    if (form.age && (!Number.isFinite(age) || age < 21)) {
+    if (dateOfBirth && !isValidDateOfBirth(dateOfBirth)) {
+      Alert.alert('Invalid date of birth', 'Enter the supervisor date of birth as MM/DD/YYYY.');
+      return false;
+    }
+
+    if (calculatedAge !== null && calculatedAge < 21) {
       Alert.alert('Invalid age', 'Supervisors must be at least 21.');
       return false;
     }
@@ -228,7 +241,24 @@ export default function SupervisorProfilesScreen() {
     currentPathRef.current = '';
   };
 
+  const openDateOfBirthPicker = () => {
+    DateTimePickerAndroid.open({
+      value: getDateOfBirthDate(form.dateOfBirth) || new Date(1980, 0, 1),
+      mode: 'date',
+      minimumDate: getMinimumDateOfBirthDate(),
+      maximumDate: new Date(),
+      onChange: (event, selectedDate) => {
+        if (event.type !== 'set' || !selectedDate) return;
+        setForm((current) => ({
+          ...current,
+          dateOfBirth: formatDateOfBirthFromDate(selectedDate),
+        }));
+      },
+    });
+  };
+
   const signature = form.signature;
+  const calculatedAge = calculateAge(form.dateOfBirth);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -272,24 +302,17 @@ export default function SupervisorProfilesScreen() {
               placeholder="Relationship"
               placeholderTextColor={theme.colors.text.light}
             />
-            <TextInput
-              style={styles.input}
-              value={form.dateOfBirth}
-              onChangeText={(dateOfBirth) => setForm((current) => ({ ...current, dateOfBirth }))}
-              placeholder="Date of birth"
-              placeholderTextColor={theme.colors.text.light}
-              keyboardType="numbers-and-punctuation"
-            />
+            <TouchableOpacity style={styles.datePickerButton} onPress={openDateOfBirthPicker}>
+              <Text style={[styles.datePickerText, !form.dateOfBirth && styles.datePickerPlaceholder]}>
+                {form.dateOfBirth || 'Date of birth'}
+              </Text>
+              <Icon name="calendar-month-outline" size={20} color={theme.colors.text.secondary} />
+            </TouchableOpacity>
             <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.rowInput]}
-                value={form.age}
-                onChangeText={(age) => setForm((current) => ({ ...current, age: age.replace(/[^0-9]/g, '') }))}
-                placeholder="Age"
-                placeholderTextColor={theme.colors.text.light}
-                keyboardType="numeric"
-                maxLength={2}
-              />
+              <View style={[styles.calculatedField, styles.rowInput]}>
+                <Text style={styles.calculatedLabel}>Age</Text>
+                <Text style={styles.calculatedValue}>{calculatedAge === null ? 'Enter DOB' : String(calculatedAge)}</Text>
+              </View>
               <TextInput
                 style={[styles.input, styles.rowInput]}
                 value={form.phone}
@@ -358,7 +381,7 @@ export default function SupervisorProfilesScreen() {
                       {[
                         profile.relationship,
                         (profile.dateOfBirth || profile.birthDate || profile.dob) ? `DOB ${profile.dateOfBirth || profile.birthDate || profile.dob}` : null,
-                        profile.age ? `${profile.age} years old` : null,
+                        getProfileAge(profile) ? `${getProfileAge(profile)} years old` : null,
                       ]
                         .filter(Boolean)
                         .join(' · ')}
@@ -438,6 +461,10 @@ function SignaturePreview({ signature, styles, theme }) {
   );
 }
 
+function getProfileAge(profile) {
+  return calculateAge(profile.dateOfBirth || profile.birthDate || profile.dob) ?? profile.age ?? null;
+}
+
 function createStyles(theme) {
   return StyleSheet.create({
     container: {
@@ -511,12 +538,53 @@ function createStyles(theme) {
       paddingHorizontal: 12,
       fontSize: 15,
     },
+    datePickerButton: {
+      minHeight: 46,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      backgroundColor: theme.colors.surfaceSecondary,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    datePickerText: {
+      flex: 1,
+      color: theme.colors.text.primary,
+      fontSize: 15,
+    },
+    datePickerPlaceholder: {
+      color: theme.colors.text.light,
+    },
     row: {
       flexDirection: 'row',
       gap: 10,
     },
     rowInput: {
       flex: 1,
+    },
+    calculatedField: {
+      minHeight: 46,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      backgroundColor: theme.colors.surfaceSecondary,
+      paddingHorizontal: 12,
+      justifyContent: 'center',
+    },
+    calculatedLabel: {
+      color: theme.colors.text.secondary,
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+    },
+    calculatedValue: {
+      color: theme.colors.text.primary,
+      fontSize: 15,
+      fontWeight: '700',
+      marginTop: 2,
     },
     signatureSummary: {
       minHeight: 52,

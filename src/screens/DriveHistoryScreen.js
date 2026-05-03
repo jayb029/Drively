@@ -15,10 +15,12 @@ import {
   formatDateForDisplay, 
   formatTimeForDisplay 
 } from '../utils/time';
+import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 
 export default function DriveHistoryScreen({ navigation }) {
-  const { drives, deleteDrive } = useDriving();
+  const { drives, deleteDrive, settings } = useDriving();
   const { theme } = useTheme();
+  const distanceUnit = settings.distanceUnit || 'metric';
   const [sortBy, setSortBy] = useState('date'); // 'date', 'duration', 'type'
   const [filterBy, setFilterBy] = useState('all'); // 'all', 'day', 'night'
 
@@ -102,7 +104,7 @@ export default function DriveHistoryScreen({ navigation }) {
           )}
           {drive.routeSummary && (
             <Text style={[styles.detailText, { color: theme.colors.text.secondary }]}>
-              Tracking: {drive.routeSummary.distanceKm} km · avg {drive.routeSummary.averageSpeedKmh} km/h · max {drive.routeSummary.maxSpeedKmh} km/h
+              Tracking: {formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)} · avg {formatSpeedFromKmh(drive.routeSummary.averageSpeedKmh, distanceUnit)} · max {formatSpeedFromKmh(drive.routeSummary.maxSpeedKmh, distanceUnit)}
             </Text>
           )}
           {drive.source === 'detected' && (
