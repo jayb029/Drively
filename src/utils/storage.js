@@ -367,9 +367,17 @@ export async function exportDrivesAsCSV() {
       drive.source || 'manual'
     ]);
     
+    const escapeCSVField = (field) => {
+      const stringValue = String(field ?? '');
+      const formulaSafeValue = /^[=+\-@\t\r]/.test(stringValue)
+        ? `'${stringValue}`
+        : stringValue;
+      return `"${formulaSafeValue.replace(/"/g, '""')}"`;
+    };
+
     // Combine headers and rows
     const csvContent = [headers, ...rows]
-      .map(row => row.map(field => `"${field}"`).join(','))
+      .map(row => row.map(escapeCSVField).join(','))
       .join('\n');
     
     return csvContent;

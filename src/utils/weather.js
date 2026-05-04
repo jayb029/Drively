@@ -17,9 +17,11 @@ const WEATHER_API_BASE_URL = 'https://api.jaysapps.com/api/weather';
  */
 export async function fetchWeatherData(lat, lon, units = 'metric') {
   try {
-    const url = `${WEATHER_API_BASE_URL}?lat=${lat}&lon=${lon}&units=${units}`;
+    const coarseLat = Number(lat).toFixed(2);
+    const coarseLon = Number(lon).toFixed(2);
+    const url = `${WEATHER_API_BASE_URL}?lat=${encodeURIComponent(coarseLat)}&lon=${encodeURIComponent(coarseLon)}&units=${encodeURIComponent(units)}`;
     
-    logger.debug('Fetching weather data', 'WEATHER_API', { lat, lon, units, url });
+    logger.debug('Fetching weather data', 'WEATHER_API', { units });
     
     const response = await fetch(url);
     

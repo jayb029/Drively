@@ -598,7 +598,7 @@ export default function OnboardingScreen({ navigation }) {
         
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>
           <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Location & Weather:</Text> Your location coordinates WILL be sent to our server 
-          to fetch weather data for your drives. However, this location data is never stored and is instantly deleted from server records.
+          to fetch weather data for your drives. Coordinates are used only for weather lookup and are not stored in app debug logs.
         </Text>
         
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>

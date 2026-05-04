@@ -3,14 +3,4 @@
   <!-- Durable Drively data: drive logs, goals, supervisor profiles, streaks, and settings. -->
   <include domain="file" path="drively/data.json" />
   <include domain="file" path="drively/backup.json" />
-
-  <!-- Exclude debug logs and anything transient or sensitive if broader rules are added later. -->
-  <exclude domain="file" path="drively/logs/" />
-  <exclude domain="file" path="cache/" />
-  <exclude domain="file" path="tmp/" />
-  <exclude domain="file" path="temp/" />
-  <exclude domain="file" path="auth/" />
-  <exclude domain="database" path="auth.db" />
-  <exclude domain="sharedpref" path="auth.xml" />
-  <exclude domain="sharedpref" path="secure_store.xml" />
 </full-backup-content>

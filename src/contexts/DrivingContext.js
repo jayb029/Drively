@@ -77,8 +77,9 @@ const initialState = {
 function drivingReducer(state, action) {
   // Log all actions for debugging
   logger.debug(`Action dispatched: ${action.type}`, 'DRIVING_CONTEXT', { 
-    actionType: action.type, 
-    payload: action.payload 
+    actionType: action.type,
+    payloadType: Array.isArray(action.payload) ? 'array' : typeof action.payload,
+    payloadId: action.payload?.id,
   });
 
   switch (action.type) {
@@ -95,7 +96,9 @@ function drivingReducer(state, action) {
       };
 
     case ACTIONS.SET_USER_INFO:
-      logger.info('User info updated', 'DRIVING_CONTEXT', action.payload);
+      logger.info('User info updated', 'DRIVING_CONTEXT', {
+        updatedFields: Object.keys(action.payload || {}),
+      });
       return {
         ...state,
         user: {

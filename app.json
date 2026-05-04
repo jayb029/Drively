@@ -2,11 +2,10 @@
   "expo": {
     "name": "Drively",
     "slug": "Drively",
-    "version": "1.1.3",
+    "version": "1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -66,8 +65,7 @@
         "android.permission.INTERNET"
       ],
       "predictiveBackGestureEnabled": true,
-      "edgeToEdgeEnabled": true,
-      "runtimeVersion": "1.1.3"
+      "runtimeVersion": "1.2"
     },
     "web": {
       "favicon": "./assets/favicon.png"

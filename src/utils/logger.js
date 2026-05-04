@@ -4,6 +4,8 @@ const LOGS_DIR = `${FileSystem.documentDirectory}drively/logs/`;
 const LOG_FILE = `${LOGS_DIR}debug.log`;
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB max log file size
 const LOG_RETENTION_DAYS = 2;
+const REDACTED_VALUE = '[REDACTED]';
+const SENSITIVE_KEY_PATTERN = /(birth|dob|license|permit|phone|signature|password|token|secret|lat|latitude|lon|lng|longitude|coordinate|url)/i;
 
 async function appendLogLine(logLine) {
   const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
@@ -15,6 +17,22 @@ function getModifiedDate(modificationTime) {
   if (!modificationTime) return null;
   const timestampMs = modificationTime < 10000000000 ? modificationTime * 1000 : modificationTime;
   return new Date(timestampMs);
+}
+
+export function redactLogData(data) {
+  if (data == null) return data;
+  if (Array.isArray(data)) {
+    return data.map(redactLogData);
+  }
+  if (typeof data === 'object') {
+    return Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        key,
+        SENSITIVE_KEY_PATTERN.test(key) ? REDACTED_VALUE : redactLogData(value),
+      ])
+    );
+  }
+  return data;
 }
 
 /**
@@ -84,6 +102,7 @@ async function ensureLogsDirectoryExists() {
  */
 export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', data = null) {
   try {
+    const safeData = redactLogData(data);
     // If FileSystem is not available, just console log
     if (!FileSystem.documentDirectory) {
       if (__DEV__) {
@@ -94,7 +113,7 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
           [LOG_LEVELS.ERROR]: console.error,
         }[level] || console.log;
 
-        consoleMethod(`[${component}] ${message}`, data || '');
+        consoleMethod(`[${component}] ${message}`, safeData || '');
       }
       return;
     }
@@ -105,10 +124,10 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
       level,
       component,
       message,
-      data,
+      data: safeData,
     };
 
-    const logLine = `${timestamp} [${level}] [${component}] ${message}${data ? ` | Data: ${JSON.stringify(data)}` : ''}\n`;
+    const logLine = `${timestamp} [${level}] [${component}] ${message}${safeData ? ` | Data: ${JSON.stringify(safeData)}` : ''}\n`;
 
     // Check if log file is getting too large (with timeout)
     const timeoutPromise = new Promise((_, reject) => 
@@ -152,7 +171,7 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
         [LOG_LEVELS.ERROR]: console.error,
       }[level] || console.log;
 
-      consoleMethod(`[${component}] ${message}`, data || '');
+      consoleMethod(`[${component}] ${message}`, safeData || '');
     }
   } catch (error) {
     console.error('Failed to write log:', error);

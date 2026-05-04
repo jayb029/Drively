@@ -26,8 +26,12 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
   const totalDayHours = user.completedDayHours;
   const totalNightHours = user.completedNightHours;
   const totalHours = totalDayHours + totalNightHours;
-  const goalHours = user.goalDayHours;
-  const goalNightHours = user.goalNightHours;
+  const normalizeHourGoal = (value, fallback) => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : fallback;
+  };
+  const goalHours = normalizeHourGoal(user.goalDayHours, 50);
+  const goalNightHours = normalizeHourGoal(user.goalNightHours, 10);
   const progressPercent = Math.round((totalHours / Math.max(goalHours, 1)) * 100);
   const currentDate = formatDateForDisplay(new Date().toISOString().split('T')[0]);
   const driverInfo = {
@@ -628,7 +632,7 @@ ${permitNumberHTML}
             <h3>${isOfficial ? 'Progress Summary' : '📊 Progress Summary'}</h3>
             <div class="stat-row">
               <span class="stat-label">License Type:</span>
-              <span class="stat-value">${user.licenseType}</span>
+              <span class="stat-value">${escapeHTML(user.licenseType)}</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Day Hours:</span>
@@ -646,18 +650,18 @@ ${permitNumberHTML}
             <div class="required-hours">
               <div class="stat-row">
                 <span class="stat-label">Total Required:</span>
-                <span class="stat-value">${goalHours} hours</span>
+                <span class="stat-value">${escapeHTML(requiredTotalHours)} hours</span>
               </div>
               <div class="stat-row">
                 <span class="stat-label">Night Minimum:</span>
-                <span class="stat-value">${goalNightHours} hours</span>
+                <span class="stat-value">${escapeHTML(requiredNightHours)} hours</span>
               </div>
             </div>
             ` : ''}
             ${!isOfficial ? `
             <div class="stat-row">
               <span class="stat-label">Goal:</span>
-              <span class="stat-value">${goalHours} hours</span>
+              <span class="stat-value">${escapeHTML(requiredTotalHours)} hours</span>
             </div>
             <div class="progress-bar">
               <div class="progress-fill"></div>
@@ -728,7 +732,7 @@ ${permitNumberHTML}
           <p class="requirement-status">
             ${hasMetOfficialRequirements
               ? 'Logged hours meet or exceed the stated total and night driving requirements.'
-              : `Logged hours are currently ${totalHours.toFixed(1)} of ${goalHours} total hours and ${totalNightHours.toFixed(1)} of ${goalNightHours} night hours. This report documents progress to date and does not certify completion of unmet requirements.`
+              : `Logged hours are currently ${escapeHTML(totalHours.toFixed(1))} of ${escapeHTML(requiredTotalHours)} total hours and ${escapeHTML(totalNightHours.toFixed(1))} of ${escapeHTML(requiredNightHours)} night hours. This report documents progress to date and does not certify completion of unmet requirements.`
             }
           </p>
           <p class="agreement-text">
