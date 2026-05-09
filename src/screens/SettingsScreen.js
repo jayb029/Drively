@@ -809,6 +809,21 @@ export default function SettingsScreen({ navigation }) {
                 />
               </View>
 
+              <View style={styles.settingHeader}>
+                <View style={styles.settingContent}>
+                  <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>Always On While Tracking</Text>
+                  <Text style={[styles.settingItemSubtitle, { color: theme.colors.text.secondary }]}>
+                    Keep the screen awake while a drive is actively being tracked.
+                  </Text>
+                </View>
+                <Switch
+                  value={settings.alwaysOnWhileTracking ?? true}
+                  onValueChange={(value) => updateSettings({ alwaysOnWhileTracking: value })}
+                  trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+                  thumbColor={(settings.alwaysOnWhileTracking ?? true) ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
+                />
+              </View>
+
               <Text style={[styles.settingTitle, { color: theme.colors.text.primary }]}>Detection Sensitivity</Text>
               <View style={styles.sensitivityOptions}>
                 {[

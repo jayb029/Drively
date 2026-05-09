@@ -26,6 +26,7 @@ const ACTIONS = {
   UPDATE_SUPERVISOR_PROFILE: 'UPDATE_SUPERVISOR_PROFILE',
   DELETE_SUPERVISOR_PROFILE: 'DELETE_SUPERVISOR_PROFILE',
   UPDATE_DETECTED_EVENT: 'UPDATE_DETECTED_EVENT',
+  DELETE_DETECTED_EVENT: 'DELETE_DETECTED_EVENT',
   COMPLETE_ONBOARDING: 'COMPLETE_ONBOARDING',
   RESET_DATA: 'RESET_DATA',
 };
@@ -62,6 +63,7 @@ const initialState = {
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
     distanceUnit: 'metric',
+    alwaysOnWhileTracking: true,
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,
@@ -268,6 +270,16 @@ function drivingReducer(state, action) {
         ),
       };
 
+    case ACTIONS.DELETE_DETECTED_EVENT:
+      logger.info('Detected drive removed', 'DRIVING_CONTEXT', {
+        detectedEventId: action.payload,
+      });
+
+      return {
+        ...state,
+        detectedEvents: state.detectedEvents.filter((event) => event.id !== action.payload),
+      };
+
     case ACTIONS.COMPLETE_ONBOARDING:
       return {
         ...state,
@@ -446,6 +458,9 @@ export function DrivingProvider({ children }) {
 
     updateDetectedEvent: (event) =>
       dispatch({ type: ACTIONS.UPDATE_DETECTED_EVENT, payload: event }),
+
+    deleteDetectedEvent: (eventId) =>
+      dispatch({ type: ACTIONS.DELETE_DETECTED_EVENT, payload: eventId }),
     
     completeOnboarding: async ({ userInfo, settings } = {}) => {
       const nextUser = {

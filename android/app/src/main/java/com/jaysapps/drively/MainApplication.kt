@@ -18,14 +18,14 @@ import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
 
 class MainApplication : Application(), ReactApplication {
+  private fun getReactPackages(): List<ReactPackage> =
+      PackageList(this).packages.apply {
+        add(DrivePipPackage())
+      }
 
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+        override fun getPackages(): List<ReactPackage> = getReactPackages()
 
         override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -37,7 +37,7 @@ class MainApplication : Application(), ReactApplication {
   override val reactHost: ReactHost
     get() = ExpoReactHostFactory.getDefaultReactHost(
         context = applicationContext,
-        packageList = PackageList(this).packages,
+        packageList = getReactPackages(),
         useDevSupport = BuildConfig.DEBUG
     )
 

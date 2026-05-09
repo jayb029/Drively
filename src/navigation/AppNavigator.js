@@ -39,6 +39,21 @@ function TabIcon({ children, focused, theme }) {
   );
 }
 
+function HeaderBackIcon({ tintColor }) {
+  return (
+    <View style={{
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 8,
+    }}>
+      <Icon name="arrow-left" size={22} color={tintColor} />
+    </View>
+  );
+}
+
 // Main tab navigator
 function MainTabs() {
   const { theme } = useTheme();
@@ -209,6 +224,7 @@ function AppNavigator() {
           },
           headerTintColor: theme.colors.primary,
           headerBackTitleVisible: false,
+          headerBackImage: ({ tintColor }) => <HeaderBackIcon tintColor={tintColor || theme.colors.primary} />,
         }}
       >
         {!user.onboardingComplete ? (

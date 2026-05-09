@@ -8,22 +8,45 @@ import {
   FlatList,
   Alert,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { SensitiveText } from '../components/SensitiveInfo';
 import { 
   formatDuration, 
   formatDateForDisplay, 
-  formatTimeForDisplay 
+  formatTimeForDisplay,
+  getDateFromDate,
+  getTimeFromDate,
 } from '../utils/time';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 
+function formatSummaryDurationParts(minutes) {
+  const normalizedMinutes = Math.max(0, Number(minutes) || 0);
+  const hours = Math.floor(normalizedMinutes / 60);
+  const remainingMinutes = normalizedMinutes % 60;
+
+  if (hours === 0) {
+    return [{ value: remainingMinutes, label: remainingMinutes === 1 ? 'minute' : 'minutes' }];
+  }
+
+  if (remainingMinutes === 0) {
+    return [{ value: hours, label: hours === 1 ? 'hour' : 'hours' }];
+  }
+
+  return [
+    { value: hours, label: hours === 1 ? 'hour' : 'hours' },
+    { value: remainingMinutes, label: remainingMinutes === 1 ? 'minute' : 'minutes' },
+  ];
+}
+
 export default function DriveHistoryScreen({ navigation }) {
-  const { drives, deleteDrive, settings } = useDriving();
+  const { deleteDetectedEvent, detectedEvents, drives, deleteDrive, settings } = useDriving();
   const { theme } = useTheme();
   const distanceUnit = settings.distanceUnit || 'metric';
   const [sortBy, setSortBy] = useState('date'); // 'date', 'duration', 'type'
   const [filterBy, setFilterBy] = useState('all'); // 'all', 'day', 'night'
+  const pendingDetectedEvents = (detectedEvents || []).filter((event) => event.status === 'new' || event.status === 'opened');
 
   // Sort and filter drives
   const processedDrives = drives
@@ -64,6 +87,28 @@ export default function DriveHistoryScreen({ navigation }) {
         },
       ]
     );
+  };
+
+  const handleRemoveDetectedEvent = (event) => {
+    Alert.alert(
+      'Remove detected drive?',
+      'Remove this detected drive if it was not your drive.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => deleteDetectedEvent(event.id),
+        },
+      ]
+    );
+  };
+
+  const formatDetectedEventDate = (event) => {
+    const timestamp = event.drivingStartedAt || event.detectedAt;
+    if (!timestamp) return 'Detected drive';
+
+    return `${formatDateForDisplay(getDateFromDate(timestamp))} at ${formatTimeForDisplay(getTimeFromDate(timestamp))}`;
   };
 
   const renderDriveItem = ({ item: drive }) => (
@@ -131,6 +176,40 @@ export default function DriveHistoryScreen({ navigation }) {
 
   const renderHeader = () => (
     <View>
+      {pendingDetectedEvents.length > 0 && (
+        <View style={[styles.detectedContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
+          <View style={styles.detectedHeader}>
+            <Text style={[styles.detectedTitle, { color: theme.colors.text.primary }]}>Detected drives</Text>
+            <Text style={[styles.detectedSubtitle, { color: theme.colors.text.secondary }]}>
+              Review or remove detections that were not yours.
+            </Text>
+          </View>
+
+          {pendingDetectedEvents.map((event) => (
+            <View key={event.id} style={[styles.detectedRow, { borderColor: theme.colors.border.light }]}>
+              <View style={[styles.detectedIcon, { backgroundColor: theme.colors.surfaceSecondary }]}>
+                <Icon name="radar" size={18} color={theme.colors.primary} />
+              </View>
+              <View style={styles.detectedInfo}>
+                <Text style={[styles.detectedDate, { color: theme.colors.text.primary }]}>
+                  {formatDetectedEventDate(event)}
+                </Text>
+                <Text style={[styles.detectedMeta, { color: theme.colors.text.secondary }]}>
+                  About {formatSpeedFromKmh(event.speedKmh, distanceUnit)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.detectedRemoveButton, { borderColor: theme.colors.error }]}
+                onPress={() => handleRemoveDetectedEvent(event)}
+                accessibilityLabel="Remove detected drive"
+              >
+                <Icon name="trash-can-outline" size={18} color={theme.colors.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Statistics */}
       <View style={styles.statsContainer}>
         <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
@@ -138,9 +217,14 @@ export default function DriveHistoryScreen({ navigation }) {
           <Text style={[styles.statLabel, { color: theme.colors.text.secondary }]}>Total Drives</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
-          <Text style={[styles.statNumber, { color: theme.colors.primary }]}>
-            {formatDuration(drives.reduce((sum, drive) => sum + drive.duration, 0))}
-          </Text>
+          <View style={styles.statDurationValue}>
+            {formatSummaryDurationParts(drives.reduce((sum, drive) => sum + drive.duration, 0)).map((part) => (
+              <View key={part.label} style={styles.statDurationPart}>
+                <Text style={[styles.statDurationNumber, { color: theme.colors.primary }]}>{part.value}</Text>
+                <Text style={[styles.statDurationUnit, { color: theme.colors.text.secondary }]}>{part.label}</Text>
+              </View>
+            ))}
+          </View>
           <Text style={[styles.statLabel, { color: theme.colors.text.secondary }]}>Total Time</Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
@@ -236,13 +320,24 @@ export default function DriveHistoryScreen({ navigation }) {
       </TouchableOpacity>
     </View>
   );
-  if (processedDrives.length === 0) {
+
+  const renderNoFilteredDrives = () => (
+    <View style={styles.filteredEmptyState}>
+      <Text style={styles.filteredEmptyStateIcon}>🔍</Text>
+      <Text style={[styles.emptyStateTitle, { color: theme.colors.text.primary }]}>No matching drives</Text>
+      <Text style={[styles.filteredEmptyStateText, { color: theme.colors.text.secondary }]}>
+        Try a different filter to see more drives.
+      </Text>
+    </View>
+  );
+
+  if (drives.length === 0 && pendingDetectedEvents.length === 0) {
     return renderEmptyState();
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.background }]}>
         <Text style={[styles.title, { color: theme.colors.text.primary }]}>Drive History</Text>
         <TouchableOpacity
           style={[styles.exportButton, { backgroundColor: theme.colors.primary }]}
@@ -257,6 +352,7 @@ export default function DriveHistoryScreen({ navigation }) {
         renderItem={renderDriveItem}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderNoFilteredDrives}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
@@ -307,12 +403,68 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 24,
   },
+  detectedContainer: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  detectedHeader: {
+    marginBottom: 12,
+  },
+  detectedTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  detectedSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  detectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 54,
+    borderTopWidth: 1,
+    paddingTop: 10,
+    marginTop: 10,
+  },
+  detectedIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detectedInfo: {
+    flex: 1,
+  },
+  detectedDate: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detectedMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  detectedRemoveButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
   statCard: {
     flex: 1,
     backgroundColor: 'white',
-    padding: 20,
+    minHeight: 116,
+    paddingHorizontal: 12,
+    paddingVertical: 18,
     borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
     shadowColor: '#000',
@@ -327,6 +479,34 @@ const styles = StyleSheet.create({
     color: '#3b82f6',
     marginBottom: 6,
     letterSpacing: -0.3,
+    textAlign: 'center',
+  },
+  statDurationValue: {
+    minHeight: 46,
+    marginBottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  statDurationPart: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+  },
+  statDurationNumber: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#3b82f6',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+  },
+  statDurationUnit: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
+    lineHeight: 14,
+    marginLeft: 3,
+    textTransform: 'uppercase',
   },
   statLabel: {
     fontSize: 13,
@@ -499,6 +679,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
+  },
+  filteredEmptyState: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 48,
+  },
+  filteredEmptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  filteredEmptyStateText: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
   },
   startDrivingButton: {
     backgroundColor: '#3b82f6',

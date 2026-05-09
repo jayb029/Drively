@@ -2,15 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
@@ -33,6 +37,11 @@ import {
 } from '../utils/time';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
+import {
+  enterDrivePictureInPicture,
+  setDrivePipTrackingActive,
+  updateDrivePipStats,
+} from '../services/drivePip';
 
 const WEATHER_OPTIONS = [
   'Clear',
@@ -62,6 +71,8 @@ const DESTINATIONS = [
   'Errand',
   'Other',
 ];
+
+const DRIVE_TRACKING_KEEP_AWAKE_TAG = 'drively-drive-tracking';
 
 function getDetectionStartTimestamp(event) {
   const timestamp = Date.parse(event?.drivingStartedAt || '');
@@ -96,15 +107,18 @@ function formatElapsed(ms) {
 export default function LogDriveScreen({ navigation }) {
   const {
     addDrive,
+    deleteDetectedEvent,
     detectedEvents,
     settings,
     supervisorProfiles,
+    updateSettings,
     updateDetectedEvent,
     user,
   } = useDriving();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const distanceUnit = settings.distanceUnit || 'metric';
+  const alwaysOnWhileTracking = settings.alwaysOnWhileTracking ?? true;
 
   const [date, setDate] = useState(getCurrentDate());
   const [startTime, setStartTime] = useState(null);
@@ -157,6 +171,47 @@ export default function LogDriveScreen({ navigation }) {
     }
     return () => clearInterval(interval);
   }, [isActive, startTimestamp]);
+
+  useEffect(() => {
+    setDrivePipTrackingActive(isActive);
+    return () => setDrivePipTrackingActive(false);
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    updateDrivePipStats({
+      title: formatElapsed(elapsedMs),
+      subtitle: `${formatDistanceFromKm(distance / 1000, distanceUnit)} · ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`,
+    });
+  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (isActive && nextState !== 'active') {
+        enterDrivePictureInPicture();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive || !alwaysOnWhileTracking) {
+      deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+      return undefined;
+    }
+
+    activateKeepAwakeAsync(DRIVE_TRACKING_KEEP_AWAKE_TAG).catch((error) => {
+      logError(error, 'TRACKING', 'Unable to keep screen awake while tracking');
+    });
+
+    return () => {
+      deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+    };
+  }, [alwaysOnWhileTracking, isActive]);
 
   const loadWeather = async () => {
     try {
@@ -252,17 +307,28 @@ export default function LogDriveScreen({ navigation }) {
     setMaxSpeed(0);
     setRoutePoints([]);
     lastPointRef.current = null;
+    try {
+      watchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          timeInterval: 5000,
+          distanceInterval: 10,
+        },
+        handleLocationUpdate
+      );
+    } catch (error) {
+      logError(error, 'TRACKING', 'Unable to start live drive tracking');
+      Alert.alert('Tracking Error', 'Could not start live drive tracking. Check location settings and try again.');
+      setStartTime(null);
+      setStartTimestamp(null);
+      setElapsedMs(0);
+      setRoutePoints([]);
+      lastPointRef.current = null;
+      return false;
+    }
+
     setIsActive(true);
     logUserAction(fromDetection ? 'start_detected_drive' : 'start_drive', 'LOG_DRIVE');
-
-    watchRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.BestForNavigation,
-        timeInterval: 5000,
-        distanceInterval: 10,
-      },
-      handleLocationUpdate
-    );
 
     return true;
   };
@@ -275,6 +341,7 @@ export default function LogDriveScreen({ navigation }) {
     setEndTime(getCurrentTime());
     setElapsedMs(Date.now() - startTimestamp);
     setIsActive(false);
+    setDrivePipTrackingActive(false);
     logUserAction('stop_drive', 'LOG_DRIVE');
   };
 
@@ -351,6 +418,7 @@ export default function LogDriveScreen({ navigation }) {
     setSkills([]);
     setSourceEventId(null);
     setIsActive(false);
+    setDrivePipTrackingActive(false);
     setSupervisorDateOfBirth('');
     lastPointRef.current = null;
   };
@@ -362,6 +430,23 @@ export default function LogDriveScreen({ navigation }) {
 
     setSourceEventId(latestDetectedEvent.id);
     updateDetectedEvent({ id: latestDetectedEvent.id, status: 'opened' });
+  };
+
+  const removeDetectedEvent = () => {
+    if (!latestDetectedEvent) return;
+
+    Alert.alert(
+      'Remove detected drive?',
+      'Remove this detected drive if it was not your drive.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => deleteDetectedEvent(latestDetectedEvent.id),
+        },
+      ]
+    );
   };
 
   const toggleSkill = (skill) => {
@@ -412,9 +497,14 @@ export default function LogDriveScreen({ navigation }) {
                   : ''}
               </Text>
             </View>
-            <TouchableOpacity style={styles.smallButton} onPress={useDetectedEvent}>
-              <Text style={styles.smallButtonText}>Use</Text>
-            </TouchableOpacity>
+            <View style={styles.noticeActions}>
+              <TouchableOpacity style={styles.smallIconButton} onPress={removeDetectedEvent} accessibilityLabel="Remove detected drive">
+                <Icon name="trash-can-outline" size={18} color={theme.colors.error} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.smallButton} onPress={useDetectedEvent}>
+                <Text style={styles.smallButtonText}>Use</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -422,6 +512,21 @@ export default function LogDriveScreen({ navigation }) {
           <Metric label="Elapsed" value={formatElapsed(elapsedMs)} icon="timer-outline" theme={theme} />
           <Metric label="Distance" value={formatDistanceFromKm(distance / 1000, distanceUnit)} icon="map-marker-distance" theme={theme} />
           <Metric label="Speed" value={formatSpeedFromKmh(currentSpeed, distanceUnit)} icon="speedometer" theme={theme} />
+        </View>
+
+        <View style={styles.alwaysOnCard}>
+          <View style={styles.alwaysOnText}>
+            <Text style={styles.alwaysOnTitle}>Always On While Tracking</Text>
+            <Text style={styles.alwaysOnBody}>
+              Keep the screen awake during an active drive so live tracking continues reliably.
+            </Text>
+          </View>
+          <Switch
+            value={alwaysOnWhileTracking}
+            onValueChange={(value) => updateSettings({ alwaysOnWhileTracking: value })}
+            trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+            thumbColor={alwaysOnWhileTracking ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
+          />
         </View>
 
         <Section title="Supervisor" styles={styles}>
@@ -672,9 +777,50 @@ function createStyles(theme) {
       color: theme.colors.text.inverse,
       fontWeight: '700',
     },
+    noticeActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    smallIconButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 7,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.error,
+      backgroundColor: theme.colors.surface,
+    },
     metrics: {
       flexDirection: 'row',
       gap: 10,
+    },
+    alwaysOnCard: {
+      minHeight: 72,
+      borderWidth: 1,
+      borderColor: theme.colors.border.light,
+      borderRadius: 8,
+      backgroundColor: theme.colors.surface,
+      padding: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    alwaysOnText: {
+      flex: 1,
+      gap: 3,
+    },
+    alwaysOnTitle: {
+      color: theme.colors.text.primary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    alwaysOnBody: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      lineHeight: 18,
     },
     section: {
       gap: 8,

@@ -1,7 +1,9 @@
 package com.jaysapps.drively
 
+import android.app.PictureInPictureParams
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -12,6 +14,9 @@ import androidx.appcompat.app.AppCompatDelegate
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
+  private var driveTrackingActive = false
+  private var latestDriveStats: DrivePipStats = DrivePipStats()
+
   override fun onCreate(savedInstanceState: Bundle?) {
     AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 
@@ -20,6 +25,57 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+  }
+
+  fun setDriveTrackingActive(active: Boolean) {
+    driveTrackingActive = active
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !active && isInPictureInPictureMode) {
+      moveTaskToBack(false)
+    }
+  }
+
+  fun updateDrivePipStats(stats: DrivePipStats) {
+    latestDriveStats = stats
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+      setPictureInPictureParams(buildPictureInPictureParams())
+    }
+  }
+
+  fun enterDrivePictureInPicture(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !driveTrackingActive) {
+      return false
+    }
+
+    return enterPictureInPictureMode(buildPictureInPictureParams())
+  }
+
+  override fun onUserLeaveHint() {
+    if (driveTrackingActive) {
+      enterDrivePictureInPicture()
+    }
+    super.onUserLeaveHint()
+  }
+
+  private fun buildPictureInPictureParams(): PictureInPictureParams {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      throw IllegalStateException("Picture-in-Picture requires Android Oreo or newer.")
+    }
+
+    val builder = PictureInPictureParams.Builder()
+      .setAspectRatio(Rational(16, 9))
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setAutoEnterEnabled(driveTrackingActive)
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      val title = latestDriveStats.title.ifBlank { "Drively" }
+      val subtitle = latestDriveStats.subtitle.ifBlank { "Drive tracking active" }
+      builder.setTitle(title)
+      builder.setSubtitle(subtitle)
+    }
+
+    return builder.build()
   }
 
   /**
@@ -62,3 +118,8 @@ class MainActivity : ReactActivity() {
       super.invokeDefaultOnBackPressed()
   }
 }
+
+data class DrivePipStats(
+  val title: String = "Drively",
+  val subtitle: String = "Drive tracking active",
+)

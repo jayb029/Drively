@@ -69,8 +69,8 @@ function AppContent() {
     setupLogger();
   }, []);
   
-  // Use theme colors for padding
-  const paddingColor = theme.colors.background;
+  const topPaddingColor = theme.colors.background;
+  const bottomPaddingColor = theme.colors.surface;
 
   // Don't render until theme is loaded to prevent theme flashing
   if (isLoading) {
@@ -82,7 +82,7 @@ function AppContent() {
       <DrivingProvider>
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
           {/* Top padding */}
-          <View style={[styles.topPadding, { backgroundColor: paddingColor, height: insets.top }]} />
+          <View style={[styles.topPadding, { backgroundColor: topPaddingColor, height: insets.top }]} />
           
           <StatusBar style={isDark ? 'light' : 'dark'} />
           
@@ -91,7 +91,7 @@ function AppContent() {
           </View>
           
           {/* Bottom padding */}
-          <View style={[styles.bottomPadding, { backgroundColor: paddingColor, height: insets.bottom }]} />
+          <View style={[styles.bottomPadding, { backgroundColor: bottomPaddingColor, height: insets.bottom }]} />
         </View>
       </DrivingProvider>
     </PaperProvider>

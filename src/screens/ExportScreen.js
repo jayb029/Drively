@@ -18,6 +18,7 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { exportDataAsJSON, exportDrivesAsCSV } from '../utils/storage';
 import { generatePDFReport } from '../utils/pdf';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 export default function ExportScreen({ navigation }) {
   const { drives, supervisorProfiles, user, streaks, settings, updateSettings } = useDriving();
@@ -478,8 +479,10 @@ export default function ExportScreen({ navigation }) {
             <TouchableOpacity
               style={styles.modalBackButton}
               onPress={() => navigation.goBack()}
+              activeOpacity={0.75}
             >
-              <Text style={styles.modalBackText}>← Back</Text>
+              <Icon name="arrow-left" size={18} color={theme.colors.text.secondary} />
+              <Text style={styles.modalBackText}>Back</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -507,8 +510,11 @@ export default function ExportScreen({ navigation }) {
             <TouchableOpacity
               style={styles.backButton}
               onPress={() => navigation.goBack()}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
-              <Text style={styles.backButtonText}>←</Text>
+              <Icon name="arrow-left" size={21} color={theme.colors.text.primary} />
             </TouchableOpacity>
             <Text style={styles.title}>Export & Share</Text>
             <View style={styles.headerSpacer} />
@@ -748,12 +754,19 @@ const createStyles = (theme) => StyleSheet.create({
   },
   modalBackButton: {
     marginTop: 16,
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderRadius: 8,
   },
   modalBackText: {
     fontSize: 16,
     color: theme.colors.text.secondary,
+    fontWeight: '600',
   },
   modeIndicator: {
     flexDirection: 'row',
@@ -798,17 +811,17 @@ const createStyles = (theme) => StyleSheet.create({
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.surfaceSecondary,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border.light,
-  },
-  backButtonText: {
-    fontSize: 18,
-    color: theme.colors.text.primary,
-    fontWeight: '600',
+    shadowColor: theme.colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   headerSpacer: {
     width: 40, // Same width as back button to center the title
