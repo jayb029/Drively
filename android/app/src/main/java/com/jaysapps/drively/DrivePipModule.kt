@@ -40,6 +40,24 @@ class DrivePipModule(
     promise.resolve(didEnter)
   }
 
+  @ReactMethod
+  fun isInPictureInPictureMode(promise: Promise) {
+    val activity = currentMainActivity()
+    val isInPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+      activity?.isInPictureInPictureMode == true
+    promise.resolve(isInPip)
+  }
+
+  @ReactMethod
+  fun addListener(eventName: String) {
+    // Required by React Native's NativeEventEmitter.
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Int) {
+    // Required by React Native's NativeEventEmitter.
+  }
+
   private fun currentMainActivity(): MainActivity? {
     return reactContext.currentActivity as? MainActivity
   }

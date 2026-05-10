@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 const DrivePip = NativeModules.DrivePip;
 
@@ -24,4 +24,18 @@ export function updateDrivePipStats({ title, subtitle }) {
 export async function enterDrivePictureInPicture() {
   if (!isDrivePipAvailable()) return false;
   return DrivePip.enterPictureInPicture();
+}
+
+export async function isInDrivePictureInPictureMode() {
+  if (!isDrivePipAvailable()) return false;
+  return DrivePip.isInPictureInPictureMode();
+}
+
+export function addDrivePipModeListener(listener) {
+  if (!isDrivePipAvailable()) {
+    return { remove: () => {} };
+  }
+
+  const emitter = new NativeEventEmitter(DrivePip);
+  return emitter.addListener('DrivePipModeChanged', listener);
 }

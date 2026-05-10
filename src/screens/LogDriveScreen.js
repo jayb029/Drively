@@ -38,7 +38,9 @@ import {
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 import {
+  addDrivePipModeListener,
   enterDrivePictureInPicture,
+  isInDrivePictureInPictureMode,
   setDrivePipTrackingActive,
   updateDrivePipStats,
 } from '../services/drivePip';
@@ -143,6 +145,7 @@ export default function LogDriveScreen({ navigation }) {
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [maxSpeed, setMaxSpeed] = useState(0);
   const [loadingWeather, setLoadingWeather] = useState(false);
+  const [isInPictureInPictureMode, setIsInPictureInPictureMode] = useState(false);
 
   const watchRef = useRef(null);
   const lastPointRef = useRef(null);
@@ -189,6 +192,7 @@ export default function LogDriveScreen({ navigation }) {
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
 
+    isInDrivePictureInPictureMode().then(setIsInPictureInPictureMode);
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (isActive && nextState !== 'active') {
         enterDrivePictureInPicture();
@@ -197,6 +201,16 @@ export default function LogDriveScreen({ navigation }) {
 
     return () => subscription.remove();
   }, [isActive]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const subscription = addDrivePipModeListener((event) => {
+      setIsInPictureInPictureMode(!!event?.isInPictureInPictureMode);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (!isActive || !alwaysOnWhileTracking) {
@@ -468,6 +482,29 @@ export default function LogDriveScreen({ navigation }) {
     });
   };
 
+  if (isInPictureInPictureMode && isActive) {
+    return (
+      <View style={styles.pipContainer}>
+        <View style={styles.pipHeader}>
+          <Icon name="car-clock" size={18} color={theme.colors.secondaryLight} />
+          <Text style={styles.pipStatus}>Tracking</Text>
+        </View>
+        <Text style={styles.pipElapsed}>{formatElapsed(elapsedMs)}</Text>
+        <View style={styles.pipStats}>
+          <View style={styles.pipStat}>
+            <Text style={styles.pipStatValue}>{formatDistanceFromKm(distance / 1000, distanceUnit)}</Text>
+            <Text style={styles.pipStatLabel}>Distance</Text>
+          </View>
+          <View style={styles.pipDivider} />
+          <View style={styles.pipStat}>
+            <Text style={styles.pipStatValue}>{formatSpeedFromKmh(currentSpeed, distanceUnit)}</Text>
+            <Text style={styles.pipStatLabel}>Speed</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -718,6 +755,55 @@ function createStyles(theme) {
       padding: 20,
       paddingBottom: 112,
       gap: 18,
+    },
+    pipContainer: {
+      flex: 1,
+      backgroundColor: '#0b1220',
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      justifyContent: 'center',
+      gap: 8,
+    },
+    pipHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    pipStatus: {
+      color: '#cbd5e1',
+      fontSize: 13,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+    },
+    pipElapsed: {
+      color: '#ffffff',
+      fontSize: 38,
+      fontWeight: '800',
+    },
+    pipStats: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    pipStat: {
+      flex: 1,
+      gap: 2,
+    },
+    pipStatValue: {
+      color: '#f8fafc',
+      fontSize: 19,
+      fontWeight: '800',
+    },
+    pipStatLabel: {
+      color: '#94a3b8',
+      fontSize: 11,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+    },
+    pipDivider: {
+      width: 1,
+      height: 34,
+      backgroundColor: '#334155',
     },
     header: {
       flexDirection: 'row',

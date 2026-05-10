@@ -1,12 +1,15 @@
 package com.jaysapps.drively
 
 import android.app.PictureInPictureParams
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
 
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
@@ -29,14 +32,18 @@ class MainActivity : ReactActivity() {
 
   fun setDriveTrackingActive(active: Boolean) {
     driveTrackingActive = active
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !active && isInPictureInPictureMode) {
-      moveTaskToBack(false)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      if (active) {
+        setPictureInPictureParams(buildPictureInPictureParams())
+      } else if (isInPictureInPictureMode) {
+        moveTaskToBack(false)
+      }
     }
   }
 
   fun updateDrivePipStats(stats: DrivePipStats) {
     latestDriveStats = stats
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && (driveTrackingActive || isInPictureInPictureMode)) {
       setPictureInPictureParams(buildPictureInPictureParams())
     }
   }
@@ -54,6 +61,17 @@ class MainActivity : ReactActivity() {
       enterDrivePictureInPicture()
     }
     super.onUserLeaveHint()
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+
+    val params = Arguments.createMap().apply {
+      putBoolean("isInPictureInPictureMode", isInPictureInPictureMode)
+    }
+    reactInstanceManager.currentReactContext
+      ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      ?.emit("DrivePipModeChanged", params)
   }
 
   private fun buildPictureInPictureParams(): PictureInPictureParams {
