@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import { Platform } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
@@ -9,10 +10,12 @@ import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
 import { configureDriveNotifications } from './src/services/driveDetection';
+import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/services/drivePip';
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const [isInPictureInPictureMode, setIsInPictureInPictureMode] = useState(false);
   
   // Initialize logger when app starts
   useEffect(() => {
@@ -68,6 +71,17 @@ function AppContent() {
 
     setupLogger();
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    isInDrivePictureInPictureMode().then(setIsInPictureInPictureMode);
+    const subscription = addDrivePipModeListener((event) => {
+      setIsInPictureInPictureMode(!!event?.isInPictureInPictureMode);
+    });
+
+    return () => subscription.remove();
+  }, []);
   
   const topPaddingColor = theme.colors.background;
   const bottomPaddingColor = theme.colors.surface;
@@ -82,16 +96,16 @@ function AppContent() {
       <DrivingProvider>
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
           {/* Top padding */}
-          <View style={[styles.topPadding, { backgroundColor: topPaddingColor, height: insets.top }]} />
+          <View style={[styles.topPadding, { backgroundColor: topPaddingColor, height: isInPictureInPictureMode ? 0 : insets.top }]} />
           
-          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <StatusBar style={isDark ? 'light' : 'dark'} hidden={isInPictureInPictureMode} />
           
           <View style={styles.content}>
             <AppNavigator />
           </View>
           
           {/* Bottom padding */}
-          <View style={[styles.bottomPadding, { backgroundColor: bottomPaddingColor, height: insets.bottom }]} />
+          <View style={[styles.bottomPadding, { backgroundColor: bottomPaddingColor, height: isInPictureInPictureMode ? 0 : insets.bottom }]} />
         </View>
       </DrivingProvider>
     </PaperProvider>

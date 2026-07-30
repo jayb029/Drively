@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  AppState,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -39,11 +38,33 @@ import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 import {
   addDrivePipModeListener,
-  enterDrivePictureInPicture,
   isInDrivePictureInPictureMode,
   setDrivePipTrackingActive,
   updateDrivePipStats,
 } from '../services/drivePip';
+import {
+  addActiveDriveTrackingListener,
+  clearActiveDriveTracking,
+  requestActiveDriveTrackingPermissions,
+  startActiveDriveTracking,
+  stopActiveDriveTracking,
+} from '../services/activeDriveTracking';
+
+function getDefaultTabBarStyle(theme) {
+  return {
+    backgroundColor: theme.colors.surface,
+    borderTopColor: theme.colors.border.light,
+    borderTopWidth: 1,
+    paddingBottom: 12,
+    paddingTop: 12,
+    height: 72,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 8,
+  };
+}
 
 const WEATHER_OPTIONS = [
   'Clear',
@@ -162,6 +183,7 @@ export default function LogDriveScreen({ navigation }) {
       if (watchRef.current) {
         watchRef.current.remove();
       }
+      clearActiveDriveTracking();
     };
   }, []);
 
@@ -186,31 +208,53 @@ export default function LogDriveScreen({ navigation }) {
     updateDrivePipStats({
       title: formatElapsed(elapsedMs),
       subtitle: `${formatDistanceFromKm(distance / 1000, distanceUnit)} · ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`,
+      startTimestamp,
+      distanceText: formatDistanceFromKm(distance / 1000, distanceUnit),
+      speedText: formatSpeedFromKmh(currentSpeed, distanceUnit),
     });
-  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive]);
+  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive, startTimestamp]);
+
+  useEffect(() => {
+    const subscription = addActiveDriveTrackingListener((event) => {
+      setElapsedMs(event.elapsedMs);
+      setDistance(event.distance);
+      setCurrentSpeed(event.currentSpeed);
+      setMaxSpeed(event.maxSpeed);
+      setRoutePoints(event.routePoints || []);
+      lastPointRef.current = event.lastPoint || null;
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
 
     isInDrivePictureInPictureMode().then(setIsInPictureInPictureMode);
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (isActive && nextState !== 'active') {
-        enterDrivePictureInPicture();
-      }
-    });
-
-    return () => subscription.remove();
   }, [isActive]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
 
     const subscription = addDrivePipModeListener((event) => {
-      setIsInPictureInPictureMode(!!event?.isInPictureInPictureMode);
+      const nextIsInPictureInPictureMode = !!event?.isInPictureInPictureMode;
+      setIsInPictureInPictureMode(nextIsInPictureInPictureMode);
+
+      if (nextIsInPictureInPictureMode) {
+        navigation.navigate('LogDrive');
+      }
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [navigation]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: isInPictureInPictureMode
+        ? styles.hiddenTabBar
+        : getDefaultTabBarStyle(theme),
+    });
+  }, [isInPictureInPictureMode, navigation, styles, theme]);
 
   useEffect(() => {
     if (!isActive || !alwaysOnWhileTracking) {
@@ -303,9 +347,14 @@ export default function LogDriveScreen({ navigation }) {
       return false;
     }
 
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      Alert.alert('Location needed', 'Foreground location is required for live drive tracking.');
+    const permission = await requestActiveDriveTrackingPermissions();
+    if (!permission.granted) {
+      Alert.alert(
+        'Location needed',
+        Platform.OS === 'android'
+          ? 'Allow background location so drive tracking can continue while Picture-in-Picture is open.'
+          : 'Location access is required for live drive tracking.'
+      );
       return false;
     }
 
@@ -322,14 +371,10 @@ export default function LogDriveScreen({ navigation }) {
     setRoutePoints([]);
     lastPointRef.current = null;
     try {
-      watchRef.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5000,
-          distanceInterval: 10,
-        },
-        handleLocationUpdate
-      );
+      await startActiveDriveTracking({
+        startTimestamp: nextStartTimestamp,
+        distanceUnit,
+      });
     } catch (error) {
       logError(error, 'TRACKING', 'Unable to start live drive tracking');
       Alert.alert('Tracking Error', 'Could not start live drive tracking. Check location settings and try again.');
@@ -347,10 +392,14 @@ export default function LogDriveScreen({ navigation }) {
     return true;
   };
 
-  const stopDrive = () => {
-    if (watchRef.current) {
-      watchRef.current.remove();
-      watchRef.current = null;
+  const stopDrive = async () => {
+    const state = await stopActiveDriveTracking();
+    if (state) {
+      setDistance(state.distance || 0);
+      setCurrentSpeed(state.currentSpeed || 0);
+      setMaxSpeed(state.maxSpeed || 0);
+      setRoutePoints(state.routePoints || []);
+      lastPointRef.current = state.lastPoint || null;
     }
     setEndTime(getCurrentTime());
     setElapsedMs(Date.now() - startTimestamp);
@@ -433,6 +482,7 @@ export default function LogDriveScreen({ navigation }) {
     setSourceEventId(null);
     setIsActive(false);
     setDrivePipTrackingActive(false);
+    clearActiveDriveTracking();
     setSupervisorDateOfBirth('');
     lastPointRef.current = null;
   };
@@ -755,6 +805,10 @@ function createStyles(theme) {
       padding: 20,
       paddingBottom: 112,
       gap: 18,
+    },
+    hiddenTabBar: {
+      display: 'none',
+      height: 0,
     },
     pipContainer: {
       flex: 1,

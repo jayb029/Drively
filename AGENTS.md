@@ -40,6 +40,56 @@ From the repo root, the equivalent command is:
 cd android && JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew assembleDebug
 ```
 
+## Local Phone Testing Without Expo Go
+
+Debug Android builds install as a separate app from preview/production:
+
+- Package ID: `com.jaysapps.drively.dev`
+- Launcher name: `Drively Dev`
+
+When finishing work for the user, include a short "What to do on your side" section when the change needs local device testing, a fresh native build, or Metro/dev-client restart. Use the exact command blocks below as appropriate.
+
+For USB-connected dev-client Metro access, run from the repo root:
+
+```sh
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:19000 tcp:19000
+adb reverse tcp:19001 tcp:19001
+npx expo start --dev-client
+```
+
+For a fresh Android debug build and install, run:
+
+```sh
+cd /Users/jay/Documents/Drively/android
+JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+To restart Metro for the dev client from the repo root, run:
+
+```sh
+cd /Users/jay/Documents/Drively
+npx expo start --dev-client
+```
+
+Debug APKs do not bundle the JavaScript app. Start Metro with the dev-client target before opening `Drively Dev`.
+
+If the phone cannot reach Metro over the local network, either use tunnel mode:
+
+```sh
+npx expo start --dev-client --tunnel
+```
+
+Or, with the phone connected over USB, forward Metro ports:
+
+```sh
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:19000 tcp:19000
+adb reverse tcp:19001 tcp:19001
+npx expo start --dev-client
+```
+
 ## EAS Build And Update Commands
 
 Create an OTA-capable preview build:

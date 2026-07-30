@@ -26,10 +26,16 @@ class DrivePipModule(
   fun updateStats(stats: ReadableMap) {
     val title = if (stats.hasKey("title")) stats.getString("title") else null
     val subtitle = if (stats.hasKey("subtitle")) stats.getString("subtitle") else null
+    val startTimestampMs = if (stats.hasKey("startTimestamp")) stats.getDouble("startTimestamp").toLong() else 0L
+    val distanceText = if (stats.hasKey("distanceText")) stats.getString("distanceText") else null
+    val speedText = if (stats.hasKey("speedText")) stats.getString("speedText") else null
     currentMainActivity()?.updateDrivePipStats(
       DrivePipStats(
         title = title ?: "Drively",
         subtitle = subtitle ?: "Drive tracking active",
+        startTimestampMs = startTimestampMs,
+        distanceText = distanceText ?: "--",
+        speedText = speedText ?: "--",
       )
     )
   }
