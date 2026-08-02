@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Alert, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Sharing from 'expo-sharing';
 import {
   SettingsButton,
   SettingsPage,
@@ -31,7 +32,14 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
   const shareLogs = async () => {
     try {
       const result = await exportLogs();
-      await Share.share({ url: result.uri, title: 'Drively debug logs', message: `Drively debug logs (${result.sizeFormatted || 'unknown size'})` });
+      if (!(await Sharing.isAvailableAsync())) {
+        throw new Error('File sharing is unavailable');
+      }
+      await Sharing.shareAsync(result.uri, {
+        dialogTitle: 'Share Drively debug log',
+        mimeType: 'text/plain',
+        UTI: 'public.plain-text',
+      });
     } catch (error) {
       Alert.alert('Export failed', 'Could not export the debug log.');
     }
