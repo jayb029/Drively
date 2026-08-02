@@ -796,7 +796,7 @@ const createStyles = (theme) => StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 32,
   },
   header: {
     marginBottom: 24,

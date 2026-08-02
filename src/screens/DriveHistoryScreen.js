@@ -289,7 +289,7 @@ function createStyles(theme) {
     },
     content: {
       paddingHorizontal: 20,
-      paddingBottom: 104,
+      paddingBottom: 24,
     },
     listHeader: {
       gap: 22,

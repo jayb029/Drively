@@ -190,7 +190,7 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 104,
+      paddingBottom: 24,
       gap: 22,
     },
     header: {

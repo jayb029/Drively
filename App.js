@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform } from 'react-native';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { DrivingProvider } from './src/contexts/DrivingContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
@@ -14,7 +14,6 @@ import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/se
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
-  const insets = useSafeAreaInsets();
   const [isInPictureInPictureMode, setIsInPictureInPictureMode] = useState(false);
   
   // Initialize logger when app starts
@@ -83,9 +82,6 @@ function AppContent() {
     return () => subscription.remove();
   }, []);
   
-  const topPaddingColor = theme.colors.background;
-  const bottomPaddingColor = theme.colors.surface;
-
   // Don't render until theme is loaded to prevent theme flashing
   if (isLoading) {
     return null;
@@ -95,17 +91,10 @@ function AppContent() {
     <PaperProvider theme={paperTheme}>
       <DrivingProvider>
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-          {/* Top padding */}
-          <View style={[styles.topPadding, { backgroundColor: topPaddingColor, height: isInPictureInPictureMode ? 0 : insets.top }]} />
-          
           <StatusBar style={isDark ? 'light' : 'dark'} hidden={isInPictureInPictureMode} />
-          
           <View style={styles.content}>
             <AppNavigator />
           </View>
-          
-          {/* Bottom padding */}
-          <View style={[styles.bottomPadding, { backgroundColor: bottomPaddingColor, height: isInPictureInPictureMode ? 0 : insets.bottom }]} />
         </View>
       </DrivingProvider>
     </PaperProvider>
@@ -128,11 +117,5 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  topPadding: {
-    width: '100%',
-  },
-  bottomPadding: {
-    width: '100%',
   },
 });

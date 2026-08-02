@@ -501,7 +501,7 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 104,
+      paddingBottom: 32,
       gap: 20,
     },
     header: {

@@ -131,7 +131,7 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 112,
+      paddingBottom: 24,
       gap: 26,
     },
     header: {
