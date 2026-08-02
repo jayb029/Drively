@@ -84,6 +84,7 @@ const DEFAULT_DATA = {
     lastBackupDate: null,
     temperatureUnit: 'metric',
     distanceUnit: 'metric',
+    censorSensitiveInfo: true,
     alwaysOnWhileTracking: true,
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',

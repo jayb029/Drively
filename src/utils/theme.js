@@ -3,45 +3,47 @@
  * Supports both light and dark mode themes
  * Integrates with React Native Paper for material design components
  */
+import { Platform } from 'react-native';
 import { MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
 
 // Base color palette that works for both themes
 export const baseColors = {
-  // Primary Colors (slightly adjusted for better dark mode contrast)
-  primary: '#3b82f6',
-  primaryDark: '#1e40af',
-  primaryLight: '#93c5fd',
+  // Road-sign green anchors primary actions without reading as a generic
+  // productivity-app blue.
+  primary: '#355E4C',
+  primaryDark: '#274638',
+  primaryLight: '#A9C5B5',
   
   // Secondary Colors
-  secondary: '#10b981',
-  secondaryDark: '#059669',
-  secondaryLight: '#6ee7b7',
+  secondary: '#C97826',
+  secondaryDark: '#995718',
+  secondaryLight: '#E9C79F',
   
   // Accent Colors
-  accent: '#f59e0b',
-  accentDark: '#d97706',
-  accentLight: '#fcd34d',
+  accent: '#C97826',
+  accentDark: '#995718',
+  accentLight: '#F0D7B9',
   
   // Status Colors
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  info: '#3b82f6',
+  success: '#477A5F',
+  warning: '#C97826',
+  error: '#B44A3D',
+  info: '#5D6A61',
   
   // Neutral Colors
   white: '#ffffff',
   black: '#000000',
   gray: {
-    50: '#f8fafc',
-    100: '#f1f5f9',
-    200: '#e2e8f0',
-    300: '#cbd5e1',
-    400: '#94a3b8',
-    500: '#64748b',
-    600: '#475569',
-    700: '#334155',
-    800: '#1e293b',
-    900: '#0f172a',
+    50: '#F7F7F3',
+    100: '#EFF0EA',
+    200: '#D8DBD3',
+    300: '#C2C6BD',
+    400: '#979E94',
+    500: '#70786F',
+    600: '#535B54',
+    700: '#3B413C',
+    800: '#282D29',
+    900: '#171B18',
   },
 };
 
@@ -50,37 +52,43 @@ export const lightColors = {
   ...baseColors,
   
   // Background Colors
-  background: '#f0f4f8',
-  surface: '#ffffff',
-  surfaceSecondary: '#f8fafc',
+  background: '#F2F3EE',
+  surface: '#FFFFFF',
+  surfaceSecondary: '#F7F7F3',
   overlay: 'rgba(0, 0, 0, 0.5)',
   
   // Text Colors
   text: {
-    primary: '#1e293b',
-    secondary: '#64748b',
-    light: '#94a3b8',
+    primary: '#202521',
+    secondary: '#5F675F',
+    light: '#858D85',
     inverse: '#ffffff',
   },
   
   // Border Colors
   border: {
-    light: '#e2e8f0',
-    medium: '#cbd5e1',
-    dark: '#94a3b8',
+    light: '#DDE0D8',
+    medium: '#C4C9C0',
+    dark: '#929A91',
   },
 
   switchControl: {
-    trackOff: '#cbd5e1',
-    trackOn: '#93c5fd',
+    trackOff: '#C9CDC5',
+    trackOn: '#8EAD9B',
     thumbOff: '#ffffff',
-    thumbOn: '#1e40af',
+    thumbOn: '#355E4C',
   },
   
   // Card Colors
   card: {
     background: '#ffffff',
-    border: '#e2e8f0',
+    border: '#DDE0D8',
+  },
+  instrument: {
+    background: '#202521',
+    text: '#F2F3EE',
+    muted: '#B3B9B1',
+    accent: '#E9C79F',
   },
 };
 
@@ -89,42 +97,48 @@ export const darkColors = {
   ...baseColors,
   
   // Adjusted primary colors for better dark mode visibility
-  primary: '#60a5fa',
-  primaryDark: '#3b82f6',
-  primaryLight: '#93c5fd',
+  primary: '#86AF99',
+  primaryDark: '#6E9680',
+  primaryLight: '#B8CFBF',
   
   // Background Colors
-  background: '#0f172a',
-  surface: '#1e293b',
-  surfaceSecondary: '#334155',
+  background: '#151815',
+  surface: '#202420',
+  surfaceSecondary: '#292E29',
   overlay: 'rgba(0, 0, 0, 0.7)',
   
   // Text Colors
   text: {
-    primary: '#f1f5f9',
-    secondary: '#94a3b8',
-    light: '#64748b',
-    inverse: '#1e293b',
+    primary: '#F2F3EE',
+    secondary: '#B3B9B1',
+    light: '#858D85',
+    inverse: '#172019',
   },
   
   // Border Colors
   border: {
-    light: '#334155',
-    medium: '#475569',
-    dark: '#64748b',
+    light: '#373D37',
+    medium: '#4A514A',
+    dark: '#6A736A',
   },
 
   switchControl: {
-    trackOff: '#334155',
-    trackOn: '#2563eb',
-    thumbOff: '#cbd5e1',
-    thumbOn: '#ffffff',
+    trackOff: '#444A44',
+    trackOn: '#668C78',
+    thumbOff: '#B8BEB6',
+    thumbOn: '#F2F3EE',
   },
   
   // Card Colors
   card: {
     background: '#1e293b',
-    border: '#334155',
+    border: '#373D37',
+  },
+  instrument: {
+    background: '#2A302B',
+    text: '#F2F3EE',
+    muted: '#B3B9B1',
+    accent: '#E9C79F',
   },
 };
 
@@ -143,15 +157,32 @@ export const spacing = {
 };
 
 export const borderRadius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
+  sm: 4,
+  md: 7,
+  lg: 9,
+  xl: 10,
+  xxl: 12,
   round: 9999,
 };
 
 export const typography = {
+  families: {
+    display: Platform.select({
+      ios: 'Avenir Next Condensed',
+      android: 'sans-serif-condensed',
+      default: undefined,
+    }),
+    body: Platform.select({
+      ios: 'Avenir Next',
+      android: 'sans-serif',
+      default: undefined,
+    }),
+    utility: Platform.select({
+      ios: 'Avenir Next Condensed',
+      android: 'sans-serif-condensed',
+      default: undefined,
+    }),
+  },
   sizes: {
     xs: 11,
     sm: 13,
@@ -182,35 +213,35 @@ export const shadows = {
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 0,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   lg: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 5,
+    elevation: 2,
   },
   xl: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
   colored: (color, opacity = 0.3) => ({
     shadowColor: color,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: opacity,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: Math.min(opacity, 0.08),
+    shadowRadius: 5,
+    elevation: 2,
   }),
 };
 
@@ -219,37 +250,37 @@ export const darkShadows = {
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.18,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 0,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    elevation: 1,
   },
   lg: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 2,
   },
   xl: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 3,
   },
   colored: (color, opacity = 0.5) => ({
     shadowColor: color,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: opacity,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: Math.min(opacity, 0.24),
+    shadowRadius: 5,
+    elevation: 2,
   }),
 };
 

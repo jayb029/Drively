@@ -127,7 +127,7 @@ class MainActivity : ReactActivity() {
     val root = window.decorView.findViewById<FrameLayout>(android.R.id.content)
     val overlay = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
-      setBackgroundColor(Color.rgb(11, 18, 32))
+      setBackgroundColor(Color.rgb(21, 24, 21))
       gravity = Gravity.CENTER_VERTICAL
       setPadding(28, 14, 28, 14)
       visibility = View.GONE
@@ -135,14 +135,14 @@ class MainActivity : ReactActivity() {
 
     val statusText = TextView(this).apply {
       text = "TRACKING"
-      setTextColor(Color.rgb(203, 213, 225))
+      setTextColor(Color.rgb(233, 199, 159))
       textSize = 12f
       typeface = Typeface.DEFAULT_BOLD
       includeFontPadding = false
     }
 
     pipElapsedText = TextView(this).apply {
-      setTextColor(Color.WHITE)
+      setTextColor(Color.rgb(242, 243, 238))
       textSize = 38f
       typeface = Typeface.DEFAULT_BOLD
       includeFontPadding = false
@@ -178,7 +178,7 @@ class MainActivity : ReactActivity() {
 
   private fun createPipStatText(): TextView {
     return TextView(this).apply {
-      setTextColor(Color.rgb(248, 250, 252))
+      setTextColor(Color.rgb(242, 243, 238))
       textSize = 17f
       typeface = Typeface.DEFAULT_BOLD
       includeFontPadding = false

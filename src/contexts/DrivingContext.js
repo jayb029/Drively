@@ -63,6 +63,7 @@ const initialState = {
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
     distanceUnit: 'metric',
+    censorSensitiveInfo: true,
     alwaysOnWhileTracking: true,
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',

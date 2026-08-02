@@ -1123,8 +1123,17 @@ export default function SettingsScreen({ navigation }) {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.colors.text.primary }]}>Settings</Text>
-          <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>Customize your Drively experience</Text>
+          <TouchableOpacity
+            accessibilityLabel="Back to settings"
+            onPress={() => navigation.goBack()}
+            style={styles.headerBackButton}
+          >
+            <Icon name="arrow-left" size={21} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.title, { color: theme.colors.text.primary }]}>Advanced settings</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>Driver information, tracking, backups, updates, and diagnostics.</Text>
+          </View>
         </View>
 
         {settingSections.map((section, sectionIndex) => (
@@ -1155,16 +1164,34 @@ const createStyles = (theme) => StyleSheet.create({
     paddingBottom: 20,
   },
   header: {
-    marginBottom: 32,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 28,
+  },
+  headerBackButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: theme.colors.border.light,
+    backgroundColor: theme.colors.surface,
+  },
+  headerCopy: {
+    flex: 1,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontFamily: theme.typography.families.display,
+    fontSize: 27,
+    fontWeight: '700',
     color: theme.colors.text.primary,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 13,
+    lineHeight: 18,
     color: theme.colors.text.secondary,
   },
   section: {
@@ -1176,7 +1203,7 @@ const createStyles = (theme) => StyleSheet.create({
     marginBottom: 12,
   },
   sectionContent: {
-    borderRadius: 12,
+    borderRadius: 7,
     borderWidth: 1,
     overflow: 'hidden',
   },
@@ -1440,7 +1467,7 @@ const createStyles = (theme) => StyleSheet.create({
   },
   // Reset button styles
   resetButton: {
-    borderRadius: 12,
+    borderRadius: 7,
     borderWidth: 2,
     padding: 16,
     marginVertical: 8,

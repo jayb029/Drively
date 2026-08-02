@@ -13,6 +13,9 @@ import LogDriveScreen from '../screens/LogDriveScreen';
 import DriveHistoryScreen from '../screens/DriveHistoryScreen';
 import ExportScreen from '../screens/ExportScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import SettingsHomeScreen from '../screens/SettingsHomeScreen';
+import GoalSettingsScreen from '../screens/GoalSettingsScreen';
+import AppearanceSettingsScreen from '../screens/AppearanceSettingsScreen';
 import SupervisorProfilesScreen from '../screens/SupervisorProfilesScreen';
 
 // Context
@@ -28,13 +31,12 @@ function TabIcon({ children, focused, theme }) {
     <View style={{
       alignItems: 'center',
       justifyContent: 'center',
-      width: 32,
-      height: 32,
-      backgroundColor: focused ? theme.colors.primary : 'transparent',
-      borderRadius: 8,
-      marginBottom: 4,
+      width: 28,
+      height: 28,
+      borderTopWidth: focused ? 2 : 0,
+      borderTopColor: theme.colors.primary,
     }}>
-      <Icon name={children} size={20} color={focused ? theme.colors.text.inverse : theme.colors.text.light} />
+      <Icon name={children} size={21} color={focused ? theme.colors.primary : theme.colors.text.light} />
     </View>
   );
 }
@@ -44,7 +46,7 @@ function HeaderBackIcon({ tintColor }) {
     <View style={{
       width: 36,
       height: 36,
-      borderRadius: 10,
+      borderRadius: 7,
       alignItems: 'center',
       justifyContent: 'center',
       marginLeft: 8,
@@ -66,16 +68,13 @@ function MainTabs() {
           
           switch (route.name) {
             case 'Dashboard':
-              iconName = 'view-dashboard-outline';
+              iconName = 'home-variant-outline';
               break;
             case 'LogDrive':
               iconName = 'car-clock';
               break;
             case 'DriveHistory':
-              iconName = 'format-list-bulleted';
-              break;
-            case 'Supervisors':
-              iconName = 'account-supervisor-outline';
+              iconName = 'notebook-outline';
               break;
             case 'Settings':
               iconName = 'cog-outline';
@@ -92,32 +91,25 @@ function MainTabs() {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border.light,
           borderTopWidth: 1,
-          paddingBottom: 12,
-          paddingTop: 12,
-          height: 72,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.05,
-          shadowRadius: 8,
-          elevation: 8,
+          paddingBottom: 8,
+          paddingTop: 7,
+          height: 64,
+          elevation: 0,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
-          marginTop: 2,
+          marginTop: 0,
         },
         headerStyle: {
           backgroundColor: theme.colors.surface,
           borderBottomColor: theme.colors.border.light,
           borderBottomWidth: 1,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 4,
-          elevation: 4,
+          elevation: 0,
         },
         headerTitleStyle: {
-          fontSize: 20,
+          fontFamily: theme.typography.families.display,
+          fontSize: 21,
           fontWeight: '700',
           color: theme.colors.text.primary,
           letterSpacing: -0.3,
@@ -129,7 +121,8 @@ function MainTabs() {
         name="Dashboard" 
         component={DashboardScreen}
         options={{
-          title: 'Dashboard',
+          title: 'Home',
+          tabBarLabel: 'Home',
           headerShown: false,
         }}
       />
@@ -146,23 +139,14 @@ function MainTabs() {
         name="DriveHistory" 
         component={DriveHistoryScreen}
         options={{
-          title: 'Drive History',
-          tabBarLabel: 'History',
-          headerShown: false,
-        }}
-      />
-      <Tab.Screen
-        name="Supervisors"
-        component={SupervisorProfilesScreen}
-        options={{
-          title: 'Supervisors',
-          tabBarLabel: 'Supervisors',
+          title: 'Logbook',
+          tabBarLabel: 'Logbook',
           headerShown: false,
         }}
       />
       <Tab.Screen 
         name="Settings" 
-        component={SettingsScreen}
+        component={SettingsHomeScreen}
         options={{
           title: 'Settings',
           headerShown: false,
@@ -218,8 +202,9 @@ function AppNavigator() {
             borderBottomWidth: 1,
           },
           headerTitleStyle: {
+            fontFamily: theme.typography.families.display,
             fontSize: 18,
-            fontWeight: 'bold',
+            fontWeight: '700',
             color: theme.colors.text.primary,
           },
           headerTintColor: theme.colors.primary,
@@ -248,6 +233,26 @@ function AppNavigator() {
                 presentation: 'modal',
                 headerShown: false,
               }}
+            />
+            <Stack.Screen
+              name="Goals"
+              component={GoalSettingsScreen}
+              options={{ title: 'Driving goal', headerShown: false }}
+            />
+            <Stack.Screen
+              name="Appearance"
+              component={AppearanceSettingsScreen}
+              options={{ title: 'Appearance', headerShown: false }}
+            />
+            <Stack.Screen
+              name="Supervisors"
+              component={SupervisorProfilesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="AdvancedSettings"
+              component={SettingsScreen}
+              options={{ title: 'Advanced settings', headerShown: false }}
             />
           </>
         )}

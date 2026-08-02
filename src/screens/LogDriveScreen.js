@@ -55,14 +55,10 @@ function getDefaultTabBarStyle(theme) {
     backgroundColor: theme.colors.surface,
     borderTopColor: theme.colors.border.light,
     borderTopWidth: 1,
-    paddingBottom: 12,
-    paddingTop: 12,
-    height: 72,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 8,
+    paddingBottom: 8,
+    paddingTop: 7,
+    height: 64,
+    elevation: 0,
   };
 }
 
@@ -170,6 +166,7 @@ export default function LogDriveScreen({ navigation }) {
 
   const watchRef = useRef(null);
   const lastPointRef = useRef(null);
+  const keepAwakeActiveRef = useRef(false);
 
   const latestDetectedEvent = detectedEvents?.find((event) => event.status === 'new');
   const latestDetectionStartTimestamp = getDetectionStartTimestamp(latestDetectedEvent);
@@ -257,17 +254,42 @@ export default function LogDriveScreen({ navigation }) {
   }, [isInPictureInPictureMode, navigation, styles, theme]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const stopKeepingAwake = () => {
+      if (!keepAwakeActiveRef.current) return;
+      keepAwakeActiveRef.current = false;
+      try {
+        deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+      } catch (error) {
+        logError(error, 'TRACKING', 'Unable to release the screen wake lock');
+      }
+    };
+
     if (!isActive || !alwaysOnWhileTracking) {
-      deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+      stopKeepingAwake();
       return undefined;
     }
 
-    activateKeepAwakeAsync(DRIVE_TRACKING_KEEP_AWAKE_TAG).catch((error) => {
-      logError(error, 'TRACKING', 'Unable to keep screen awake while tracking');
-    });
+    activateKeepAwakeAsync(DRIVE_TRACKING_KEEP_AWAKE_TAG)
+      .then(() => {
+        if (cancelled) {
+          try {
+            deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+          } catch (error) {
+            logError(error, 'TRACKING', 'Unable to release the screen wake lock');
+          }
+          return;
+        }
+        keepAwakeActiveRef.current = true;
+      })
+      .catch((error) => {
+        logError(error, 'TRACKING', 'Unable to keep screen awake while tracking');
+      });
 
     return () => {
-      deactivateKeepAwake(DRIVE_TRACKING_KEEP_AWAKE_TAG);
+      cancelled = true;
+      stopKeepingAwake();
     };
   }, [alwaysOnWhileTracking, isActive]);
 
@@ -636,6 +658,7 @@ export default function LogDriveScreen({ navigation }) {
                     ]}
                     revealLabel="Supervisor name"
                     numberOfLines={1}
+                    forceVisible
                   />
                 </TouchableOpacity>
               ))}
@@ -652,6 +675,7 @@ export default function LogDriveScreen({ navigation }) {
 
           {!selectedSupervisorId && (
             <View style={styles.formGrid}>
+              <Text style={styles.fieldLabel}>Full name</Text>
               <TextInput
                 style={styles.input}
                 value={supervisorName}
@@ -659,6 +683,7 @@ export default function LogDriveScreen({ navigation }) {
                 placeholder="Supervisor name"
                 placeholderTextColor={theme.colors.text.light}
               />
+              <Text style={styles.fieldLabel}>Date of birth</Text>
               <TouchableOpacity style={styles.datePickerButton} onPress={openSupervisorDateOfBirthPicker}>
                 <Text style={[styles.datePickerText, !supervisorDateOfBirth && styles.datePickerPlaceholder]}>
                   {supervisorDateOfBirth || 'Date of birth'}
@@ -669,6 +694,7 @@ export default function LogDriveScreen({ navigation }) {
                 <Text style={styles.calculatedLabel}>Age</Text>
                 <Text style={styles.calculatedValue}>{enteredSupervisorAge === null ? 'Enter DOB' : String(enteredSupervisorAge)}</Text>
               </View>
+              <Text style={styles.fieldLabel}>License number</Text>
               <TextInput
                 style={styles.input}
                 value={supervisorLicense}
@@ -746,18 +772,23 @@ function Metric({ icon, label, theme, value }) {
   return (
     <View style={{
       flex: 1,
-      minHeight: 86,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      backgroundColor: theme.colors.surface,
-      padding: 12,
+      minHeight: 94,
+      paddingHorizontal: 12,
+      paddingVertical: 14,
       justifyContent: 'space-between',
     }}>
-      <Icon name={icon} size={18} color={theme.colors.text.secondary} />
+      <Icon name={icon} size={18} color={theme.colors.instrument.accent} />
       <View>
-        <Text style={{ color: theme.colors.text.primary, fontSize: 17, fontWeight: '700' }}>{value}</Text>
-        <Text style={{ color: theme.colors.text.secondary, fontSize: 12, marginTop: 2 }}>{label}</Text>
+        <Text style={{
+          color: theme.colors.instrument.text,
+          fontFamily: theme.typography.families.utility,
+          fontVariant: ['tabular-nums'],
+          fontSize: 18,
+          fontWeight: '700',
+        }}>
+          {value}
+        </Text>
+        <Text style={{ color: theme.colors.instrument.muted, fontSize: 11, marginTop: 2 }}>{label}</Text>
       </View>
     </View>
   );
@@ -803,8 +834,8 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 112,
-      gap: 18,
+      paddingBottom: 104,
+      gap: 20,
     },
     hiddenTabBar: {
       display: 'none',
@@ -812,7 +843,7 @@ function createStyles(theme) {
     },
     pipContainer: {
       flex: 1,
-      backgroundColor: '#0b1220',
+      backgroundColor: '#151815',
       paddingHorizontal: 18,
       paddingVertical: 12,
       justifyContent: 'center',
@@ -824,13 +855,13 @@ function createStyles(theme) {
       gap: 6,
     },
     pipStatus: {
-      color: '#cbd5e1',
+      color: '#E9C79F',
       fontSize: 13,
       fontWeight: '800',
       textTransform: 'uppercase',
     },
     pipElapsed: {
-      color: '#ffffff',
+      color: '#F2F3EE',
       fontSize: 38,
       fontWeight: '800',
     },
@@ -844,12 +875,12 @@ function createStyles(theme) {
       gap: 2,
     },
     pipStatValue: {
-      color: '#f8fafc',
+      color: '#F2F3EE',
       fontSize: 19,
       fontWeight: '800',
     },
     pipStatLabel: {
-      color: '#94a3b8',
+      color: '#B3B9B1',
       fontSize: 11,
       fontWeight: '700',
       textTransform: 'uppercase',
@@ -857,7 +888,7 @@ function createStyles(theme) {
     pipDivider: {
       width: 1,
       height: 34,
-      backgroundColor: '#334155',
+      backgroundColor: '#373D37',
     },
     header: {
       flexDirection: 'row',
@@ -866,8 +897,10 @@ function createStyles(theme) {
     },
     title: {
       color: theme.colors.text.primary,
-      fontSize: 26,
+      fontFamily: theme.typography.families.display,
+      fontSize: 30,
       fontWeight: '700',
+      letterSpacing: -0.4,
     },
     subtitle: {
       color: theme.colors.text.secondary,
@@ -934,13 +967,15 @@ function createStyles(theme) {
     },
     metrics: {
       flexDirection: 'row',
-      gap: 10,
+      borderRadius: 7,
+      backgroundColor: theme.colors.instrument.background,
+      overflow: 'hidden',
     },
     alwaysOnCard: {
       minHeight: 72,
       borderWidth: 1,
       borderColor: theme.colors.border.light,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.surface,
       padding: 14,
       flexDirection: 'row',
@@ -973,7 +1008,7 @@ function createStyles(theme) {
     sectionBody: {
       borderWidth: 1,
       borderColor: theme.colors.border.light,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.surface,
       padding: 14,
       gap: 12,
@@ -991,14 +1026,14 @@ function createStyles(theme) {
     choice: {
       borderWidth: 1,
       borderColor: theme.colors.border.medium,
-      borderRadius: 7,
+      borderRadius: 5,
       paddingHorizontal: 12,
       paddingVertical: 9,
       backgroundColor: theme.colors.surface,
     },
     choiceSelected: {
       borderColor: theme.colors.primary,
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.surfaceSecondary,
     },
     choiceText: {
       color: theme.colors.text.primary,
@@ -1006,7 +1041,7 @@ function createStyles(theme) {
       fontWeight: '600',
     },
     choiceTextSelected: {
-      color: theme.colors.text.inverse,
+      color: theme.colors.primary,
     },
     formGrid: {
       gap: 10,
@@ -1052,9 +1087,8 @@ function createStyles(theme) {
     },
     calculatedLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
-      textTransform: 'uppercase',
     },
     calculatedValue: {
       color: theme.colors.text.primary,
@@ -1095,7 +1129,7 @@ function createStyles(theme) {
     primaryButton: {
       flex: 1,
       minHeight: 52,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1105,7 +1139,7 @@ function createStyles(theme) {
     dangerButton: {
       flex: 1,
       minHeight: 52,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.error,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1115,7 +1149,7 @@ function createStyles(theme) {
     secondaryButton: {
       flex: 1,
       minHeight: 52,
-      borderRadius: 8,
+      borderRadius: 7,
       borderWidth: 1,
       borderColor: theme.colors.primary,
       alignItems: 'center',

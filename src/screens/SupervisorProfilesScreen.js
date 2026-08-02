@@ -37,7 +37,7 @@ const emptyForm = {
   signature: null,
 };
 
-export default function SupervisorProfilesScreen() {
+export default function SupervisorProfilesScreen({ navigation }) {
   const {
     addSupervisorProfile,
     deleteSupervisorProfile,
@@ -265,8 +265,18 @@ export default function SupervisorProfilesScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Supervisors</Text>
-          <Text style={styles.subtitle}>Save supervisor profiles and signatures for official exports.</Text>
+          <TouchableOpacity
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+            onPress={() => navigation.goBack()}
+            style={styles.headerBackButton}
+          >
+            <Icon name="arrow-left" size={21} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Supervisors</Text>
+            <Text style={styles.subtitle}>Profiles and signatures used in your logbook.</Text>
+          </View>
         </View>
 
         <View style={styles.menu}>
@@ -274,14 +284,14 @@ export default function SupervisorProfilesScreen() {
             style={[styles.menuItem, activeMenu === 'saved' && styles.menuItemActive]}
             onPress={() => setActiveMenu('saved')}
           >
-            <Icon name="account-supervisor-outline" size={18} color={activeMenu === 'saved' ? theme.colors.text.inverse : theme.colors.text.primary} />
+            <Icon name="account-supervisor-outline" size={18} color={activeMenu === 'saved' ? theme.colors.primary : theme.colors.text.secondary} />
             <Text style={[styles.menuText, activeMenu === 'saved' && styles.menuTextActive]}>Saved Profiles</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.menuItem, activeMenu === 'save' && styles.menuItemActive]}
             onPress={startNew}
           >
-            <Icon name="content-save-outline" size={18} color={activeMenu === 'save' ? theme.colors.text.inverse : theme.colors.text.primary} />
+            <Icon name="content-save-outline" size={18} color={activeMenu === 'save' ? theme.colors.primary : theme.colors.text.secondary} />
             <Text style={[styles.menuText, activeMenu === 'save' && styles.menuTextActive]}>Save Profile</Text>
           </TouchableOpacity>
         </View>
@@ -289,6 +299,7 @@ export default function SupervisorProfilesScreen() {
         {activeMenu === 'save' ? (
           <View style={styles.form}>
             <Text style={styles.sectionTitle}>{editingId ? 'Edit Profile' : 'Save Profile'}</Text>
+            <Text style={styles.inputLabel}>Full name</Text>
             <TextInput
               style={styles.input}
               value={form.name}
@@ -296,6 +307,7 @@ export default function SupervisorProfilesScreen() {
               placeholder="Full name"
               placeholderTextColor={theme.colors.text.light}
             />
+            <Text style={styles.inputLabel}>Relationship</Text>
             <TextInput
               style={styles.input}
               value={form.relationship}
@@ -303,6 +315,7 @@ export default function SupervisorProfilesScreen() {
               placeholder="Relationship"
               placeholderTextColor={theme.colors.text.light}
             />
+            <Text style={styles.inputLabel}>Date of birth</Text>
             <TouchableOpacity style={styles.datePickerButton} onPress={openDateOfBirthPicker}>
               <Text style={[styles.datePickerText, !form.dateOfBirth && styles.datePickerPlaceholder]}>
                 {form.dateOfBirth || 'Date of birth'}
@@ -323,6 +336,7 @@ export default function SupervisorProfilesScreen() {
                 keyboardType="phone-pad"
               />
             </View>
+            <Text style={styles.inputLabel}>License number</Text>
             <TextInput
               style={styles.input}
               value={form.licenseNumber}
@@ -487,16 +501,34 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 112,
-      gap: 18,
+      paddingBottom: 104,
+      gap: 20,
     },
     header: {
-      gap: 3,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+    },
+    headerBackButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.border.light,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    headerCopy: {
+      flex: 1,
+      gap: 2,
     },
     title: {
       color: theme.colors.text.primary,
-      fontSize: 26,
+      fontFamily: theme.typography.families.display,
+      fontSize: 30,
       fontWeight: '700',
+      letterSpacing: -0.4,
     },
     subtitle: {
       color: theme.colors.text.secondary,
@@ -504,11 +536,8 @@ function createStyles(theme) {
     },
     menu: {
       flexDirection: 'row',
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      borderRadius: 8,
-      overflow: 'hidden',
-      backgroundColor: theme.colors.surface,
+      borderBottomWidth: 1,
+      borderColor: theme.colors.border.medium,
     },
     menuItem: {
       flex: 1,
@@ -517,9 +546,11 @@ function createStyles(theme) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
+      borderBottomWidth: 3,
+      borderBottomColor: 'transparent',
     },
     menuItemActive: {
-      backgroundColor: theme.colors.primary,
+      borderBottomColor: theme.colors.primary,
     },
     menuText: {
       color: theme.colors.text.primary,
@@ -527,15 +558,21 @@ function createStyles(theme) {
       fontSize: 14,
     },
     menuTextActive: {
-      color: theme.colors.text.inverse,
+      color: theme.colors.primary,
     },
     form: {
       borderWidth: 1,
       borderColor: theme.colors.border.light,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.surface,
       padding: 14,
       gap: 10,
+    },
+    inputLabel: {
+      color: theme.colors.text.primary,
+      fontSize: 13,
+      fontWeight: '600',
+      marginBottom: -4,
     },
     sectionTitle: {
       color: theme.colors.text.primary,
@@ -590,9 +627,8 @@ function createStyles(theme) {
     },
     calculatedLabel: {
       color: theme.colors.text.secondary,
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: '700',
-      textTransform: 'uppercase',
     },
     calculatedValue: {
       color: theme.colors.text.primary,
@@ -733,7 +769,7 @@ function createStyles(theme) {
       alignItems: 'center',
       borderWidth: 1,
       borderColor: theme.colors.border.light,
-      borderRadius: 8,
+      borderRadius: 7,
       backgroundColor: theme.colors.surface,
       padding: 14,
       gap: 12,

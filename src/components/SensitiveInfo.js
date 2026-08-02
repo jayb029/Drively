@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 const DEFAULT_PLACEHOLDER = 'Tap to reveal';
@@ -27,12 +28,16 @@ export function SensitiveText({
   placeholder,
   revealLabel = 'Sensitive information',
   numberOfLines,
+  forceVisible = false,
 }) {
   const { theme } = useTheme();
+  const { settings } = useDriving();
   const [revealed, setRevealed] = useState(false);
   const fade = useRef(new Animated.Value(1)).current;
   const displayValue = value ? String(value) : fallback;
   const hiddenValue = placeholder || buildMask(value);
+  const censoringEnabled = settings.censorSensitiveInfo ?? true;
+  const isVisible = forceVisible || !censoringEnabled || revealed || !value;
 
   useEffect(() => {
     fade.setValue(0.72);
@@ -44,23 +49,27 @@ export function SensitiveText({
   }, [fade, revealed]);
 
   const toggleReveal = () => {
-    if (!value) return;
+    if (!value || forceVisible || !censoringEnabled) return;
     setRevealed((current) => !current);
   };
 
   return (
     <Pressable
       onPress={toggleReveal}
-      disabled={!value}
-      accessibilityRole={value ? 'button' : undefined}
-      accessibilityLabel={revealed ? `${revealLabel}, revealed` : `${revealLabel}, hidden. Tap to reveal.`}
+      disabled={!value || forceVisible || !censoringEnabled}
+      accessibilityRole={value && censoringEnabled && !forceVisible ? 'button' : undefined}
+      accessibilityLabel={
+        value && censoringEnabled && !forceVisible
+          ? (revealed ? `${revealLabel}, revealed` : `${revealLabel}, hidden. Tap to reveal.`)
+          : undefined
+      }
       style={[styles.pressable, containerStyle]}
     >
       <Animated.View style={[styles.row, { opacity: fade }]}>
         <Text
           style={[
             textStyle,
-            !revealed && value && {
+            !isVisible && {
               color: theme.colors.text.secondary,
               textShadowColor: theme.colors.text.secondary,
               textShadowOffset: { width: 0, height: 0 },
@@ -69,9 +78,9 @@ export function SensitiveText({
           ]}
           numberOfLines={numberOfLines}
         >
-          {revealed || !value ? displayValue : hiddenValue}
+          {isVisible ? displayValue : hiddenValue}
         </Text>
-        {!!value && (
+        {!!value && censoringEnabled && !forceVisible && (
           <Icon
             name={revealed ? 'eye-off-outline' : 'eye-outline'}
             size={15}
@@ -113,7 +122,13 @@ export function SensitiveBlock({
   revealLabel = 'Sensitive information',
 }) {
   const { theme } = useTheme();
+  const { settings } = useDriving();
   const [revealed, setRevealed] = useState(false);
+  const censoringEnabled = settings.censorSensitiveInfo ?? true;
+
+  if (!censoringEnabled) {
+    return <View style={containerStyle}>{children}</View>;
+  }
 
   return (
     <Pressable

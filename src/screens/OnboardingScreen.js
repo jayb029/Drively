@@ -97,7 +97,8 @@ const DISTANCE_OPTIONS = [
 
 export default function OnboardingScreen({ navigation }) {
   const { completeOnboarding, updateSettings } = useDriving();
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const scrollViewRef = useRef(null);
   const [step, setStep] = useState(1);
   const [licenseType, setLicenseType] = useState(null);
@@ -113,7 +114,7 @@ export default function OnboardingScreen({ navigation }) {
   const [isCompleting, setIsCompleting] = useState(false);
   const selectedOptionStyle = {
     borderColor: theme.colors.primary,
-    backgroundColor: isDark ? theme.colors.surfaceSecondary : '#eff6ff',
+    backgroundColor: theme.colors.surfaceSecondary,
   };
 
   useEffect(() => {
@@ -691,52 +692,51 @@ export default function OnboardingScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    padding: 20,
+    paddingBottom: 36,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 48,
-    paddingTop: 20,
+    alignItems: 'flex-start',
+    marginBottom: 32,
+    paddingTop: 12,
   },
   logo: {
-    fontSize: 36,
-    fontWeight: '800',
-    marginBottom: 8,
-    letterSpacing: -1,
+    fontFamily: theme.typography.families.display,
+    fontSize: 31,
+    fontWeight: '700',
+    marginBottom: 2,
+    letterSpacing: -0.7,
   },
   subtitle: {
-    fontSize: 18,
-    marginBottom: 40,
+    fontSize: 14,
+    marginBottom: 24,
     fontWeight: '500',
   },
   progressContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 5,
     alignItems: 'center',
+    width: '100%',
   },
   progressDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    flex: 1,
+    height: 4,
+    borderRadius: 0,
   },
   activeDot: {
-    transform: [{ scale: 1.2 }],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    elevation: 0,
   },
   stepContainer: {
     flex: 1,
   },
   footer: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: 28,
     paddingBottom: 8,
     gap: 4,
@@ -751,40 +751,36 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   stepTitle: {
-    fontSize: 28,
+    fontFamily: theme.typography.families.display,
+    fontSize: 27,
     fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 12,
+    textAlign: 'left',
+    marginBottom: 7,
     letterSpacing: -0.5,
   },
   stepSubtitle: {
-    fontSize: 17,
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
-    paddingHorizontal: 16,
+    fontSize: 15,
+    textAlign: 'left',
+    marginBottom: 24,
+    lineHeight: 22,
   },
   optionsContainer: {
-    gap: 20,
-    marginBottom: 32,
+    gap: 10,
+    marginBottom: 24,
   },
   optionCard: {
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 2,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    padding: 16,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignItems: 'flex-start',
+    elevation: 0,
   },
   unitOptionCard: {
-    minHeight: 104,
+    minHeight: 76,
     justifyContent: 'center',
   },
   unitOptionContent: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 6,
   },
@@ -794,45 +790,41 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   optionIcon: {
-    fontSize: 40,
-    marginBottom: 12,
+    fontSize: 24,
+    marginBottom: 8,
   },
   optionTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 3,
   },
   unitOptionTitle: {
     marginBottom: 0,
   },
   optionDescription: {
-    fontSize: 15,
-    textAlign: 'center',
-    lineHeight: 22,
+    fontSize: 13,
+    textAlign: 'left',
+    lineHeight: 19,
   },
   goalCard: {
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    padding: 15,
+    borderRadius: 7,
+    borderWidth: 1,
+    elevation: 0,
   },
   goalTitle: {
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '600',
     marginBottom: 6,
   },
   goalSubtitle: {
-    fontSize: 15,
+    fontSize: 13,
     marginBottom: 6,
     fontWeight: '500',
   },
   goalDescription: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 18,
   },
   customGoalContainer: {
     marginTop: 8,
@@ -847,9 +839,10 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   textInput: {
-    borderWidth: 2,
-    borderRadius: 10,
-    padding: 14,
+    borderWidth: 1,
+    borderRadius: 7,
+    minHeight: 48,
+    paddingHorizontal: 12,
     fontSize: 16,
   },
   datePickerButton: {
@@ -879,9 +872,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   goalInput: {
-    borderWidth: 2,
-    borderRadius: 12,
-    padding: 14,
+    borderWidth: 1,
+    borderRadius: 7,
+    minHeight: 48,
+    paddingHorizontal: 12,
     fontSize: 16,
   },
   customGoalHint: {
@@ -894,15 +888,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   noticeContainer: {
-    padding: 24,
-    borderRadius: 16,
-    marginBottom: 32,
-    gap: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    padding: 16,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: theme.colors.border.light,
+    marginBottom: 24,
+    gap: 16,
+    elevation: 0,
   },
   noticeText: {
     fontSize: 15,
@@ -916,12 +908,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
     padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: theme.colors.border.light,
+    elevation: 0,
   },
   checkbox: {
     width: 24,
@@ -945,15 +935,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   continueButton: {
-    paddingVertical: 18,
+    minHeight: 50,
     paddingHorizontal: 32,
-    borderRadius: 12,
+    borderRadius: 7,
     alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    elevation: 0,
   },
   disabledButton: {
     shadowOpacity: 0.2,
@@ -970,11 +958,12 @@ const styles = StyleSheet.create({
   },
   backButton: {
     backgroundColor: 'transparent',
-    paddingVertical: 18,
+    minHeight: 50,
     paddingHorizontal: 32,
-    borderRadius: 12,
+    borderRadius: 7,
     alignItems: 'center',
-    borderWidth: 2,
+    justifyContent: 'center',
+    borderWidth: 1,
     flex: 1,
   },
   backButtonText: {
@@ -982,15 +971,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   nextButton: {
-    paddingVertical: 18,
+    minHeight: 50,
     paddingHorizontal: 32,
-    borderRadius: 12,
+    borderRadius: 7,
     alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    elevation: 0,
   },
   nextButtonText: {
     fontSize: 17,

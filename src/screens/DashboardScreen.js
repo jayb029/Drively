@@ -3,21 +3,25 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatDateForDisplay, formatDuration } from '../utils/time';
+import { formatDateForDisplay, formatDuration, getCurrentDate } from '../utils/time';
 import { formatDistanceFromKm } from '../utils/units';
 
 export default function DashboardScreen({ navigation }) {
-  const { detectedEvents, drives, loading, settings, supervisorProfiles, user } = useDriving();
+  const { detectedEvents, drives, loading, settings, user } = useDriving();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const distanceUnit = settings.distanceUnit || 'metric';
 
   if (loading) return null;
 
-  const totalMinutes = drives.reduce((sum, drive) => sum + drive.duration, 0);
-  const totalGoalMinutes = user.goalDayHours * 60;
-  const nightGoalMinutes = user.goalNightHours * 60;
-  const nightMinutes = drives.filter((drive) => drive.isNightDrive).reduce((sum, drive) => sum + drive.duration, 0);
+  const totalMinutes = drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
+  const nightMinutes = drives
+    .filter((drive) => drive.isNightDrive)
+    .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
+  const totalGoalMinutes = Math.max(1, Number(user.goalDayHours) * 60);
+  const nightGoalMinutes = Math.max(1, Number(user.goalNightHours) * 60);
+  const totalPercent = Math.min(100, Math.round((totalMinutes / totalGoalMinutes) * 100));
+  const nightPercent = Math.min(100, Math.round((nightMinutes / nightGoalMinutes) * 100));
   const detectedOpen = detectedEvents.filter((event) => event.status === 'new').length;
   const recentDrives = [...drives].slice(-4).reverse();
 
@@ -27,86 +31,120 @@ export default function DashboardScreen({ navigation }) {
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Drively</Text>
-            <Text style={styles.subtitle}>{formatDuration(totalMinutes)} logged across {drives.length} drives</Text>
+            <Text style={styles.date}>{formatDateForDisplay(getCurrentDate())}</Text>
           </View>
-          <TouchableOpacity style={styles.primaryIconButton} onPress={() => navigation.navigate('LogDrive')}>
-            <Icon name="plus" size={24} color={theme.colors.text.inverse} />
+          <TouchableOpacity
+            accessibilityLabel="Open settings"
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('Settings')}
+            style={styles.headerButton}
+          >
+            <Icon name="cog-outline" size={22} color={theme.colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.progressCard}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.cardTitle}>Required Hours</Text>
-            <Text style={styles.cardValue}>{Math.round((totalMinutes / Math.max(totalGoalMinutes, 1)) * 100)}%</Text>
+        <View style={styles.logbookBand}>
+          <View style={styles.totalBlock}>
+            <Text style={styles.totalValue}>{formatDuration(totalMinutes)}</Text>
+            <Text style={styles.totalLabel}>of {formatDuration(totalGoalMinutes)} logged</Text>
           </View>
-          <ProgressRow
+          <View style={styles.bandDivider} />
+          <View style={styles.percentBlock}>
+            <Text style={styles.percentValue}>{totalPercent}%</Text>
+            <Text style={styles.percentLabel}>complete</Text>
+          </View>
+        </View>
+
+        <View style={styles.goalSection}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Required hours</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('Goals')}>
+              <Text style={styles.textAction}>Change goal</Text>
+            </TouchableOpacity>
+          </View>
+          <ProgressLine
             label="Total"
             minutes={totalMinutes}
             goalMinutes={totalGoalMinutes}
-            color={theme.colors.primary}
+            progress={totalPercent}
             styles={styles}
+            theme={theme}
           />
-          <ProgressRow
+          <ProgressLine
             label="Night"
             minutes={nightMinutes}
             goalMinutes={nightGoalMinutes}
-            color={theme.colors.secondary}
+            progress={nightPercent}
             styles={styles}
+            theme={theme}
+            night
           />
         </View>
 
-        <View style={styles.metricGrid}>
-          <Metric label="Supervisors" value={String(supervisorProfiles.length)} icon="account-supervisor-outline" theme={theme} />
-          <Metric label="Detected" value={String(detectedOpen)} icon="radar" theme={theme} />
-          <Metric label="Tracking" value={settings.driveDetectionEnabled ? 'On' : 'Off'} icon="crosshairs-gps" theme={theme} />
-        </View>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('LogDrive')}
+          style={styles.startButton}
+        >
+          <View>
+            <Text style={styles.startButtonText}>Start a drive</Text>
+            <Text style={styles.startButtonSubtext}>Track time, distance, and practice</Text>
+          </View>
+          <Icon name="arrow-right" size={22} color={theme.colors.text.inverse} />
+        </TouchableOpacity>
 
         {detectedOpen > 0 && (
-          <TouchableOpacity style={styles.detectedPanel} onPress={() => navigation.navigate('LogDrive')}>
-            <Icon name="car-connected" size={22} color={theme.colors.primary} />
-            <View style={styles.detectedText}>
-              <Text style={styles.detectedTitle}>{detectedOpen} detected drive{detectedOpen === 1 ? '' : 's'}</Text>
-              <Text style={styles.detectedBody}>Open the log screen to confirm and save.</Text>
-            </View>
-            <Icon name="chevron-right" size={22} color={theme.colors.text.secondary} />
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('LogDrive')}
+            style={styles.detectedRow}
+          >
+            <Icon name="radar" size={20} color={theme.colors.secondary} />
+            <Text style={styles.detectedText}>
+              {detectedOpen} detected drive{detectedOpen === 1 ? '' : 's'} waiting for review
+            </Text>
+            <Icon name="chevron-right" size={20} color={theme.colors.text.light} />
           </TouchableOpacity>
         )}
 
-        <View style={styles.quickActions}>
-          <ActionButton label="Log Drive" icon="car-clock" onPress={() => navigation.navigate('LogDrive')} theme={theme} />
-          <ActionButton label="History" icon="format-list-bulleted" onPress={() => navigation.navigate('DriveHistory')} theme={theme} />
-          <ActionButton label="Supervisors" icon="account-plus-outline" onPress={() => navigation.navigate('Supervisors')} theme={theme} />
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Drives</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('DriveHistory')}>
-              <Text style={styles.linkText}>View all</Text>
-            </TouchableOpacity>
+        <View style={styles.recentSection}>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Recent drives</Text>
+            {recentDrives.length > 0 && (
+              <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('DriveHistory')}>
+                <Text style={styles.textAction}>Open logbook</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {recentDrives.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No drives logged</Text>
-              <Text style={styles.emptyBody}>Start a timed drive or confirm a detected drive.</Text>
+            <View style={styles.emptyState}>
+              <Icon name="notebook-outline" size={25} color={theme.colors.text.secondary} />
+              <View style={styles.emptyCopy}>
+                <Text style={styles.emptyTitle}>Your logbook is empty</Text>
+                <Text style={styles.emptyBody}>Start a drive to add your first entry.</Text>
+              </View>
             </View>
           ) : (
-            recentDrives.map((drive) => (
-              <View key={drive.id} style={styles.driveRow}>
-                <View style={styles.driveIcon}>
-                  <Icon name={drive.isNightDrive ? 'weather-night' : 'white-balance-sunny'} size={18} color={theme.colors.primary} />
+            <View style={styles.driveList}>
+              {recentDrives.map((drive, index) => (
+                <View key={drive.id} style={[styles.driveRow, index < recentDrives.length - 1 && styles.driveRowBorder]}>
+                  <View style={styles.driveDateBlock}>
+                    <Text style={styles.driveDay}>{formatDateForDisplay(drive.date)}</Text>
+                    <Text style={styles.driveTime}>{drive.startTime}–{drive.endTime}</Text>
+                  </View>
+                  <View style={styles.driveMeta}>
+                    <Text style={styles.driveDuration}>{formatDuration(drive.duration)}</Text>
+                    <Text style={styles.driveDistance}>
+                      {drive.isNightDrive ? 'Night' : 'Day'}
+                      {drive.routeSummary?.distanceKm
+                        ? ` · ${formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)}`
+                        : ''}
+                    </Text>
+                  </View>
                 </View>
-                <View style={styles.driveMain}>
-                  <Text style={styles.driveTitle}>{formatDateForDisplay(drive.date)}</Text>
-                  <Text style={styles.driveMeta}>
-                    {drive.startTime} to {drive.endTime}
-                    {drive.routeSummary?.distanceKm ? ` · ${formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)}` : ''}
-                  </Text>
-                </View>
-                <Text style={styles.driveDuration}>{formatDuration(drive.duration)}</Text>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -114,60 +152,25 @@ export default function DashboardScreen({ navigation }) {
   );
 }
 
-function ProgressRow({ color, goalMinutes, label, minutes, styles }) {
-  const percent = Math.min(100, Math.round((minutes / Math.max(goalMinutes, 1)) * 100));
+function ProgressLine({ goalMinutes, label, minutes, night, progress, styles, theme }) {
   return (
     <View style={styles.progressRow}>
-      <View style={styles.progressLabelRow}>
+      <View style={styles.progressCopy}>
         <Text style={styles.progressLabel}>{label}</Text>
-        <Text style={styles.progressMeta}>{formatDuration(minutes)} / {formatDuration(goalMinutes)}</Text>
+        <Text style={styles.progressValue}>{formatDuration(minutes)} / {formatDuration(goalMinutes)}</Text>
       </View>
       <View style={styles.progressTrack}>
-        <View style={[styles.progressFill, { width: `${percent}%`, backgroundColor: color }]} />
+        <View
+          style={[
+            styles.progressFill,
+            {
+              backgroundColor: night ? theme.colors.secondary : theme.colors.primary,
+              width: `${progress}%`,
+            },
+          ]}
+        />
       </View>
     </View>
-  );
-}
-
-function Metric({ icon, label, theme, value }) {
-  return (
-    <View style={{
-      flex: 1,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      backgroundColor: theme.colors.surface,
-      padding: 14,
-      gap: 10,
-    }}>
-      <Icon name={icon} size={20} color={theme.colors.text.secondary} />
-      <View>
-        <Text style={{ color: theme.colors.text.primary, fontSize: 18, fontWeight: '700' }}>{value}</Text>
-        <Text style={{ color: theme.colors.text.secondary, fontSize: 12, marginTop: 2 }}>{label}</Text>
-      </View>
-    </View>
-  );
-}
-
-function ActionButton({ icon, label, onPress, theme }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={{
-        flex: 1,
-        minHeight: 76,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: theme.colors.border.light,
-        backgroundColor: theme.colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-      }}
-    >
-      <Icon name={icon} size={21} color={theme.colors.primary} />
-      <Text style={{ color: theme.colors.text.primary, fontSize: 13, fontWeight: '700' }}>{label}</Text>
-    </TouchableOpacity>
   );
 }
 
@@ -179,8 +182,8 @@ function createStyles(theme) {
     },
     content: {
       padding: 20,
-      paddingBottom: 112,
-      gap: 18,
+      paddingBottom: 104,
+      gap: 22,
     },
     header: {
       flexDirection: 'row',
@@ -189,173 +192,227 @@ function createStyles(theme) {
     },
     title: {
       color: theme.colors.text.primary,
-      fontSize: 28,
-      fontWeight: '800',
+      fontFamily: theme.typography.families.display,
+      fontSize: 31,
+      fontWeight: '700',
+      letterSpacing: -0.7,
     },
-    subtitle: {
+    date: {
       color: theme.colors.text.secondary,
-      fontSize: 14,
-      marginTop: 2,
+      fontSize: 13,
+      marginTop: 1,
     },
-    primaryIconButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 8,
-      backgroundColor: theme.colors.primary,
+    headerButton: {
+      width: 42,
+      height: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.border.light,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    logbookBand: {
+      minHeight: 114,
+      flexDirection: 'row',
+      borderWidth: 1,
+      borderColor: theme.colors.border.dark,
+      borderRadius: 7,
+      backgroundColor: theme.colors.instrument.background,
+      overflow: 'hidden',
+    },
+    totalBlock: {
+      flex: 1,
+      justifyContent: 'center',
+      paddingHorizontal: 18,
+    },
+    totalValue: {
+      color: theme.colors.instrument.text,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 34,
+      fontWeight: '700',
+      letterSpacing: -0.5,
+    },
+    totalLabel: {
+      color: theme.colors.instrument.muted,
+      fontSize: 12,
+      marginTop: 2,
+      opacity: 0.72,
+    },
+    bandDivider: {
+      width: 1,
+      marginVertical: 18,
+      backgroundColor: theme.colors.instrument.muted,
+      opacity: 0.45,
+    },
+    percentBlock: {
+      width: 104,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    progressCard: {
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      backgroundColor: theme.colors.surface,
-      padding: 16,
-      gap: 14,
-    },
-    progressHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    cardTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 17,
+    percentValue: {
+      color: theme.colors.instrument.accent,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 25,
       fontWeight: '700',
     },
-    cardValue: {
-      color: theme.colors.primary,
-      fontSize: 20,
-      fontWeight: '800',
+    percentLabel: {
+      color: theme.colors.instrument.muted,
+      fontSize: 11,
+      opacity: 0.7,
     },
-    progressRow: {
-      gap: 7,
+    goalSection: {
+      gap: 15,
     },
-    progressLabelRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    progressLabel: {
-      color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    progressMeta: {
-      color: theme.colors.text.secondary,
-      fontSize: 13,
-    },
-    progressTrack: {
-      height: 8,
-      borderRadius: 4,
-      overflow: 'hidden',
-      backgroundColor: theme.colors.border.light,
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: 4,
-    },
-    metricGrid: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    detectedPanel: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      backgroundColor: theme.colors.surface,
-      padding: 14,
-    },
-    detectedText: {
-      flex: 1,
-    },
-    detectedTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    detectedBody: {
-      color: theme.colors.text.secondary,
-      fontSize: 13,
-      marginTop: 2,
-    },
-    quickActions: {
-      flexDirection: 'row',
-      gap: 10,
-    },
-    section: {
-      gap: 10,
-    },
-    sectionHeader: {
+    sectionHeading: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
     },
     sectionTitle: {
       color: theme.colors.text.primary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    textAction: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    progressRow: {
+      gap: 7,
+    },
+    progressCopy: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    progressLabel: {
+      color: theme.colors.text.primary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    progressValue: {
+      color: theme.colors.text.secondary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 13,
+    },
+    progressTrack: {
+      height: 5,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.border.light,
+    },
+    progressFill: {
+      height: '100%',
+    },
+    startButton: {
+      minHeight: 68,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 17,
+      borderRadius: 7,
+      backgroundColor: theme.colors.primary,
+    },
+    startButtonText: {
+      color: theme.colors.text.inverse,
       fontSize: 17,
       fontWeight: '700',
     },
-    linkText: {
-      color: theme.colors.primary,
-      fontSize: 14,
-      fontWeight: '700',
+    startButtonSubtext: {
+      color: theme.colors.text.inverse,
+      fontSize: 12,
+      marginTop: 2,
+      opacity: 0.76,
     },
-    emptyCard: {
-      borderRadius: 8,
+    detectedRow: {
+      minHeight: 54,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: theme.colors.border.light,
+    },
+    detectedText: {
+      flex: 1,
+      color: theme.colors.text.primary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    recentSection: {
+      gap: 10,
+    },
+    driveList: {
       borderWidth: 1,
       borderColor: theme.colors.border.light,
+      borderRadius: 7,
+      overflow: 'hidden',
       backgroundColor: theme.colors.surface,
-      padding: 16,
+    },
+    driveRow: {
+      minHeight: 66,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+    },
+    driveRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border.light,
+    },
+    driveDateBlock: {
+      flex: 1,
+      gap: 2,
+    },
+    driveDay: {
+      color: theme.colors.text.primary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    driveTime: {
+      color: theme.colors.text.secondary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 12,
+    },
+    driveMeta: {
+      alignItems: 'flex-end',
+      gap: 2,
+    },
+    driveDuration: {
+      color: theme.colors.text.primary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    driveDistance: {
+      color: theme.colors.text.secondary,
+      fontSize: 11,
+    },
+    emptyState: {
+      minHeight: 82,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 13,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: theme.colors.border.light,
+      paddingHorizontal: 4,
+    },
+    emptyCopy: {
+      gap: 2,
     },
     emptyTitle: {
       color: theme.colors.text.primary,
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: '700',
     },
     emptyBody: {
       color: theme.colors.text.secondary,
       fontSize: 13,
-      marginTop: 3,
-    },
-    driveRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      backgroundColor: theme.colors.surface,
-      padding: 12,
-      marginBottom: 10,
-    },
-    driveIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.surfaceSecondary,
-    },
-    driveMain: {
-      flex: 1,
-    },
-    driveTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    driveMeta: {
-      color: theme.colors.text.secondary,
-      fontSize: 12,
-      marginTop: 2,
-    },
-    driveDuration: {
-      color: theme.colors.primary,
-      fontSize: 14,
-      fontWeight: '800',
     },
   });
 }

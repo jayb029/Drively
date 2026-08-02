@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F2F3EE"
     },
     "plugins": [
       [
@@ -46,7 +46,7 @@
       "package": "com.jaysapps.drively",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A62A4"
+        "backgroundColor": "#355E4C"
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
