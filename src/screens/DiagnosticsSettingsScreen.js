@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import {
   SettingsButton,
   SettingsPage,
@@ -70,9 +70,14 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
       </SettingsSection>
       {lines.length > 0 && (
         <SettingsSection title="Recent entries">
-          <View style={styles.logBlock}>
+          <ScrollView
+            contentContainerStyle={styles.logBlock}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+            style={styles.logScroller}
+          >
             {lines.map((line, index) => <Text key={`${index}-${line}`} style={styles.logLine}>{line}</Text>)}
-          </View>
+          </ScrollView>
         </SettingsSection>
       )}
     </SettingsPage>
@@ -83,7 +88,8 @@ function makeStyles(theme) {
   return StyleSheet.create({
     actions: { padding: 14, gap: 10 },
     summary: { color: theme.colors.text.secondary, fontSize: 13, lineHeight: 18 },
-    logBlock: { padding: 12, maxHeight: 360 },
+    logScroller: { maxHeight: 360 },
+    logBlock: { padding: 12 },
     logLine: { color: theme.colors.text.secondary, fontFamily: theme.typography.families.utility, fontSize: 11, lineHeight: 16 },
   });
 }
