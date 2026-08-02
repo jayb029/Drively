@@ -3,6 +3,7 @@ import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultThem
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
 
@@ -47,6 +48,8 @@ function TabIcon({ children, focused, theme }) {
 // Main tab navigator
 function MainTabs() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const tabBarBottomInset = Math.max(insets.bottom, 8);
   
   return (
     <Tab.Navigator
@@ -79,9 +82,9 @@ function MainTabs() {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border.light,
           borderTopWidth: 1,
-          paddingBottom: 8,
+          paddingBottom: tabBarBottomInset,
           paddingTop: 7,
-          height: 64,
+          height: 56 + tabBarBottomInset,
           elevation: 0,
         },
         tabBarLabelStyle: {
