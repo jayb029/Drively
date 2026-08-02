@@ -8,6 +8,7 @@ import { setNotificationHandler } from 'expo-notifications/build/NotificationsHa
 import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync';
 import * as TaskManager from 'expo-task-manager';
 import { loadData, saveData } from '../utils/storage';
+import { formatSpeedFromKmh } from '../utils/units';
 
 export const DRIVE_DETECTION_TASK = 'drively-drive-detection-v1';
 
@@ -113,11 +114,12 @@ async function recordDetectedEvent(point, speedKmh, drivingStartedAt) {
   return event;
 }
 
-async function notifyDrivingDetected(event, speedKmh) {
+async function notifyDrivingDetected(event, speedKmh, distanceUnit) {
+  const speedText = formatSpeedFromKmh(speedKmh, distanceUnit || 'metric');
   await scheduleNotificationAsync({
     content: {
       title: 'Driving detected',
-      body: `Drively detected movement near ${Math.round(speedKmh)} km/h. Open the app to start or confirm a drive log.`,
+      body: `Drively detected movement near ${speedText}. Open the app to start or confirm a drive log.`,
       sound: true,
       data: {
         type: 'drive_detected',
@@ -154,7 +156,7 @@ async function handleLocationBatch(locations) {
 
     if (state.movingSince && sustainedMs >= 70 * 1000 && canNotify && canRecord) {
       const event = await recordDetectedEvent(point, speedKmh, state.movingSince);
-      await notifyDrivingDetected(event, speedKmh);
+      await notifyDrivingDetected(event, speedKmh, data.settings?.distanceUnit);
       state.lastNotificationAt = point.timestamp;
       state.lastEventAt = point.timestamp;
     }
