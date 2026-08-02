@@ -85,10 +85,10 @@ export const lightColors = {
     border: '#DDE0D8',
   },
   instrument: {
-    background: '#202521',
-    text: '#F2F3EE',
-    muted: '#B3B9B1',
-    accent: '#E9C79F',
+    background: '#FFFFFF',
+    text: '#202521',
+    muted: '#5F675F',
+    accent: '#995718',
   },
 };
 
@@ -131,7 +131,7 @@ export const darkColors = {
   
   // Card Colors
   card: {
-    background: '#1e293b',
+    background: '#202420',
     border: '#373D37',
   },
   instrument: {
