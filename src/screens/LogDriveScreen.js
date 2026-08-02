@@ -35,7 +35,7 @@ import {
   isNightTime,
 } from '../utils/time';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
-import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
+import { formatDistanceFromKm, formatSpeedFromKmh, getSpeedUnitLabel } from '../utils/units';
 import {
   addDrivePipModeListener,
   isInDrivePictureInPictureMode,
@@ -145,6 +145,7 @@ export default function LogDriveScreen({ navigation }) {
   const [startTimestamp, setStartTimestamp] = useState(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isActive, setIsActive] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisorProfiles[0]?.id || null);
@@ -247,11 +248,11 @@ export default function LogDriveScreen({ navigation }) {
 
   useEffect(() => {
     navigation.setOptions({
-      tabBarStyle: isInPictureInPictureMode
+      tabBarStyle: isActive || isInPictureInPictureMode
         ? styles.hiddenTabBar
         : getDefaultTabBarStyle(theme),
     });
-  }, [isInPictureInPictureMode, navigation, styles, theme]);
+  }, [isActive, isInPictureInPictureMode, navigation, styles, theme]);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,19 +419,29 @@ export default function LogDriveScreen({ navigation }) {
   };
 
   const stopDrive = async () => {
-    const state = await stopActiveDriveTracking();
-    if (state) {
-      setDistance(state.distance || 0);
-      setCurrentSpeed(state.currentSpeed || 0);
-      setMaxSpeed(state.maxSpeed || 0);
-      setRoutePoints(state.routePoints || []);
-      lastPointRef.current = state.lastPoint || null;
+    if (isStopping) return;
+
+    setIsStopping(true);
+    try {
+      const state = await stopActiveDriveTracking();
+      if (state) {
+        setDistance(state.distance || 0);
+        setCurrentSpeed(state.currentSpeed || 0);
+        setMaxSpeed(state.maxSpeed || 0);
+        setRoutePoints(state.routePoints || []);
+        lastPointRef.current = state.lastPoint || null;
+      }
+      setEndTime(getCurrentTime());
+      setElapsedMs(Date.now() - startTimestamp);
+      setIsActive(false);
+      setDrivePipTrackingActive(false);
+      logUserAction('stop_drive', 'LOG_DRIVE');
+    } catch (error) {
+      logError(error, 'TRACKING', 'Unable to stop live drive tracking');
+      Alert.alert('Could not end drive', 'Drive tracking is still active. Try again.');
+    } finally {
+      setIsStopping(false);
     }
-    setEndTime(getCurrentTime());
-    setElapsedMs(Date.now() - startTimestamp);
-    setIsActive(false);
-    setDrivePipTrackingActive(false);
-    logUserAction('stop_drive', 'LOG_DRIVE');
   };
 
   const saveDrive = async () => {
@@ -577,6 +588,71 @@ export default function LogDriveScreen({ navigation }) {
           </View>
         </View>
       </View>
+    );
+  }
+
+  if (isActive) {
+    const displaySpeed = distanceUnit === 'imperial'
+      ? currentSpeed * 0.621371
+      : currentSpeed;
+
+    return (
+      <SafeAreaView style={styles.activeContainer}>
+        <View style={styles.activeContent}>
+          <View style={styles.activeHeader}>
+            <View style={styles.activeStatus}>
+              <Icon name="car-clock" size={22} color="#E9C79F" />
+              <View>
+                <Text style={styles.activeTitle}>Drive in progress</Text>
+                <Text style={styles.activeStarted}>
+                  Started {formatTimeForDisplay(startTime)}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.activeElapsed}>{formatElapsed(elapsedMs)}</Text>
+          </View>
+
+          <View style={styles.speedReadout} accessible accessibilityLabel={`Current speed ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`}>
+            <Text style={styles.speedLabel}>Current speed</Text>
+            <Text style={styles.speedValue}>{Math.round(displaySpeed)}</Text>
+            <Text style={styles.speedUnit}>{getSpeedUnitLabel(distanceUnit)}</Text>
+          </View>
+
+          <View style={styles.activeMetrics}>
+            <ActiveMetric
+              icon="map-marker-distance"
+              label="Distance"
+              value={formatDistanceFromKm(distance / 1000, distanceUnit)}
+              styles={styles}
+            />
+            <View style={styles.activeMetricDivider} />
+            <ActiveMetric
+              icon="speedometer"
+              label="Max speed"
+              value={formatSpeedFromKmh(maxSpeed, distanceUnit)}
+              styles={styles}
+            />
+          </View>
+
+          <View style={styles.activeFooter}>
+            <TouchableOpacity
+              style={[styles.endDriveButton, isStopping && styles.endDriveButtonDisabled]}
+              onPress={stopDrive}
+              disabled={isStopping}
+              accessibilityRole="button"
+              accessibilityLabel="End drive"
+            >
+              {isStopping ? (
+                <ActivityIndicator color="#F2F3EE" />
+              ) : (
+                <Icon name="stop" size={24} color="#F2F3EE" />
+              )}
+              <Text style={styles.endDriveButtonText}>{isStopping ? 'Ending drive' : 'End drive'}</Text>
+            </TouchableOpacity>
+            <Text style={styles.activeFooterText}>Review and save the drive after it ends.</Text>
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -797,6 +873,16 @@ function Metric({ icon, label, theme, value }) {
   );
 }
 
+function ActiveMetric({ icon, label, styles, value }) {
+  return (
+    <View style={styles.activeMetric}>
+      <Icon name={icon} size={22} color="#E9C79F" />
+      <Text style={styles.activeMetricValue}>{value}</Text>
+      <Text style={styles.activeMetricLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function Section({ children, styles, title }) {
   return (
     <View style={styles.section}>
@@ -843,6 +929,130 @@ function createStyles(theme) {
     hiddenTabBar: {
       display: 'none',
       height: 0,
+    },
+    activeContainer: {
+      flex: 1,
+      backgroundColor: '#151815',
+    },
+    activeContent: {
+      flex: 1,
+      paddingHorizontal: 24,
+      paddingTop: 22,
+      paddingBottom: 20,
+      justifyContent: 'space-between',
+    },
+    activeHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 20,
+    },
+    activeStatus: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    activeTitle: {
+      color: '#F2F3EE',
+      fontFamily: theme.typography.families.display,
+      fontSize: 19,
+      fontWeight: '700',
+    },
+    activeStarted: {
+      color: '#B3B9B1',
+      fontSize: 12,
+      marginTop: 1,
+    },
+    activeElapsed: {
+      color: '#F2F3EE',
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 23,
+      fontWeight: '800',
+    },
+    speedReadout: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+    },
+    speedLabel: {
+      color: '#B3B9B1',
+      fontSize: 15,
+      fontWeight: '600',
+      marginBottom: -6,
+    },
+    speedValue: {
+      color: '#F2F3EE',
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 112,
+      fontWeight: '800',
+      letterSpacing: -5,
+      lineHeight: 122,
+    },
+    speedUnit: {
+      color: '#E9C79F',
+      fontFamily: theme.typography.families.utility,
+      fontSize: 20,
+      fontWeight: '700',
+      marginTop: -8,
+    },
+    activeMetrics: {
+      minHeight: 112,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: '#373D37',
+    },
+    activeMetric: {
+      flex: 1,
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 17,
+    },
+    activeMetricValue: {
+      color: '#F2F3EE',
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 24,
+      fontWeight: '800',
+    },
+    activeMetricLabel: {
+      color: '#B3B9B1',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    activeMetricDivider: {
+      width: 1,
+      height: 58,
+      backgroundColor: '#373D37',
+    },
+    activeFooter: {
+      gap: 9,
+    },
+    endDriveButton: {
+      minHeight: 64,
+      borderRadius: 8,
+      backgroundColor: '#9A3E34',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    endDriveButtonDisabled: {
+      opacity: 0.65,
+    },
+    endDriveButtonText: {
+      color: '#F2F3EE',
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    activeFooterText: {
+      color: '#858D85',
+      fontSize: 12,
+      textAlign: 'center',
     },
     pipContainer: {
       flex: 1,
