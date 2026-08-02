@@ -384,7 +384,6 @@ export default function ExportScreen({ navigation }) {
         ? 'Share full data backup with another device or service'
         : 'Choose location to save full data backup with file picker',
       icon: '💾',
-      color: '#2563eb',
       onPress: handleExportJSON,
     },
     {
@@ -394,7 +393,6 @@ export default function ExportScreen({ navigation }) {
         ? 'Share spreadsheet-friendly format with drive details'
         : 'Choose location to save spreadsheet-friendly drive data',
       icon: '📊',
-      color: '#10b981',
       onPress: handleExportCSV,
     },
     {
@@ -404,7 +402,6 @@ export default function ExportScreen({ navigation }) {
         ? 'Share professional PDF report with progress summary'
         : 'Choose location to save professional PDF report',
       icon: '📄',
-      color: '#f59e0b',
       onPress: handleExportPDF,
     },
     ...(exportMode === 'share' ? [{
@@ -412,7 +409,6 @@ export default function ExportScreen({ navigation }) {
       title: 'Share Progress Text',
       description: 'Share your driving progress as text on social media',
       icon: '📱',
-      color: '#8b5cf6',
       onPress: handleShareSummary,
     }] : []),
   ];
@@ -564,7 +560,7 @@ export default function ExportScreen({ navigation }) {
           {exportOptions.map((option) => (
             <View key={option.id}>
               <TouchableOpacity
-                style={[styles.optionCard, { borderLeftColor: option.color }]}
+                style={styles.optionCard}
                 onPress={option.onPress}
                 disabled={exporting}
               >
@@ -578,7 +574,7 @@ export default function ExportScreen({ navigation }) {
                 </View>
                 
                 <View style={styles.optionAction}>
-                  <Text style={[styles.actionText, { color: option.color }]}>
+                  <Text style={styles.actionText}>
                     {exporting ? '...' : '→'}
                   </Text>
                 </View>
@@ -878,7 +874,6 @@ const createStyles = (theme) => StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: theme.colors.border.light,
-    borderLeftWidth: 4,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -912,6 +907,7 @@ const createStyles = (theme) => StyleSheet.create({
   actionText: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: theme.colors.text.secondary,
   },
   pdfOptionsContainer: {
     backgroundColor: theme.colors.surfaceSecondary,
