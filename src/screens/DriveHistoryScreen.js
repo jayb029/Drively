@@ -32,10 +32,17 @@ export default function DriveHistoryScreen({ navigation }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [filterBy, setFilterBy] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [showOlderDetections, setShowOlderDetections] = useState(false);
   const distanceUnit = settings.distanceUnit || 'metric';
-  const pendingDetectedEvents = (detectedEvents || []).filter(
-    (event) => event.status === 'new' || event.status === 'opened'
-  );
+  const pendingDetectedEvents = (detectedEvents || [])
+    .filter((event) => event.status === 'new' || event.status === 'opened')
+    .sort((a, b) => (
+      Date.parse(b.drivingStartedAt || b.detectedAt || 0) -
+      Date.parse(a.drivingStartedAt || a.detectedAt || 0)
+    ));
+  const visibleDetectedEvents = showOlderDetections
+    ? pendingDetectedEvents
+    : pendingDetectedEvents.slice(0, 1);
 
   const processedDrives = [...drives]
     .filter((drive) => {
@@ -129,7 +136,7 @@ export default function DriveHistoryScreen({ navigation }) {
         <View style={styles.detectedSection}>
           <Text style={styles.sectionTitle}>Detected drives</Text>
           <View style={styles.detectedList}>
-            {pendingDetectedEvents.map((event, index) => {
+            {visibleDetectedEvents.map((event, index) => {
               const timestamp = event.drivingStartedAt || event.detectedAt;
               const label = timestamp
                 ? `${formatDateForDisplay(getDateFromDate(timestamp))} at ${formatTimeForDisplay(getTimeFromDate(timestamp))}`
@@ -137,7 +144,7 @@ export default function DriveHistoryScreen({ navigation }) {
               return (
                 <View
                   key={event.id}
-                  style={[styles.detectedRow, index < pendingDetectedEvents.length - 1 && styles.detectedRowBorder]}
+                  style={[styles.detectedRow, index < visibleDetectedEvents.length - 1 && styles.detectedRowBorder]}
                 >
                   <Icon name="radar" size={18} color={theme.colors.secondary} />
                   <View style={styles.detectedCopy}>
@@ -154,6 +161,24 @@ export default function DriveHistoryScreen({ navigation }) {
                 </View>
               );
             })}
+            {pendingDetectedEvents.length > 1 && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setShowOlderDetections((current) => !current)}
+                style={styles.olderDetectionsButton}
+              >
+                <Icon
+                  name={showOlderDetections ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={theme.colors.text.secondary}
+                />
+                <Text style={styles.olderDetectionsText}>
+                  {showOlderDetections
+                    ? 'Hide older detections'
+                    : `Older detections (${pendingDetectedEvents.length - 1})`}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
@@ -371,6 +396,21 @@ function createStyles(theme) {
       height: 36,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    olderDetectionsButton: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 13,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border.light,
+      backgroundColor: theme.colors.surfaceSecondary,
+    },
+    olderDetectionsText: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
+      fontWeight: '600',
     },
     controls: {
       gap: 13,
