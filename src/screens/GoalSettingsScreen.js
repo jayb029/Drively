@@ -68,35 +68,24 @@ export default function GoalSettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.form}>
-          <View style={styles.field}>
-            <Text style={styles.label}>Total required hours</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                accessibilityLabel="Total required hours"
-                keyboardType="decimal-pad"
-                onChangeText={setTotalHours}
-                selectTextOnFocus
-                style={styles.input}
-                value={totalHours}
-              />
-              <Text style={styles.unit}>hours</Text>
-            </View>
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Night minimum</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                accessibilityLabel="Required night hours"
-                keyboardType="decimal-pad"
-                onChangeText={setNightHours}
-                selectTextOnFocus
-                style={styles.input}
-                value={nightHours}
-              />
-              <Text style={styles.unit}>hours</Text>
-            </View>
-          </View>
+          <GoalSlider
+            label="Total required hours"
+            max={100}
+            min={1}
+            onChange={setTotalHours}
+            styles={styles}
+            theme={theme}
+            value={totalHours}
+          />
+          <GoalSlider
+            label="Night minimum"
+            max={Math.max(1, Number(totalHours) || 1)}
+            min={0}
+            onChange={setNightHours}
+            styles={styles}
+            theme={theme}
+            value={nightHours}
+          />
         </View>
 
         <View style={styles.preview}>
@@ -119,6 +108,85 @@ export default function GoalSettingsScreen({ navigation }) {
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function GoalSlider({ label, max, min, onChange, styles, theme, value }) {
+  const [editing, setEditing] = useState(false);
+  const [trackWidth, setTrackWidth] = useState(1);
+  const numericValue = Number(value);
+  const safeValue = Number.isFinite(numericValue) ? Math.min(max, Math.max(min, numericValue)) : min;
+  const progress = max === min ? 0 : ((safeValue - min) / (max - min)) * 100;
+
+  const updateFromPosition = (position) => {
+    const nextValue = min + (Math.max(0, Math.min(position, trackWidth)) / trackWidth) * (max - min);
+    onChange(String(Math.round(nextValue)));
+  };
+
+  const adjust = (direction) => {
+    onChange(String(Math.min(max, Math.max(min, safeValue + direction))));
+  };
+
+  return (
+    <View style={styles.field}>
+      <View style={styles.goalHeader}>
+        <Text style={styles.label}>{label}</Text>
+        {editing ? (
+          <View style={styles.inputRow}>
+            <TextInput
+              accessibilityLabel={`${label}, manual value`}
+              autoFocus
+              keyboardType="decimal-pad"
+              onBlur={() => setEditing(false)}
+              onChangeText={onChange}
+              onSubmitEditing={() => setEditing(false)}
+              selectTextOnFocus
+              style={styles.input}
+              value={value}
+            />
+            <Text style={styles.unit}>hr</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            accessibilityHint="Opens the keyboard for manual editing"
+            accessibilityLabel={`${label}, ${value} hours`}
+            accessibilityRole="button"
+            onPress={() => setEditing(true)}
+            style={styles.valueButton}
+          >
+            <Text style={styles.valueButtonText}>{value}</Text>
+            <Text style={styles.valueButtonUnit}>hr</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <View
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        accessibilityLabel={label}
+        accessibilityRole="adjustable"
+        accessibilityValue={{ min, max, now: safeValue, text: `${safeValue} hours` }}
+        onAccessibilityAction={({ nativeEvent }) => adjust(nativeEvent.actionName === 'increment' ? 1 : -1)}
+        onLayout={({ nativeEvent }) => setTrackWidth(nativeEvent.layout.width)}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={({ nativeEvent }) => updateFromPosition(nativeEvent.locationX)}
+        onResponderMove={({ nativeEvent }) => updateFromPosition(nativeEvent.locationX)}
+        onStartShouldSetResponder={() => true}
+        style={styles.sliderTouchArea}
+      >
+        <View style={styles.sliderTrack}>
+          <View style={[styles.sliderFill, { width: `${progress}%` }]} />
+          <View
+            style={[
+              styles.sliderThumb,
+              { left: `${progress}%`, borderColor: theme.colors.primary },
+            ]}
+          />
+        </View>
+      </View>
+      <View style={styles.sliderRange}>
+        <Text style={styles.rangeText}>{min} hr</Text>
+        <Text style={styles.rangeText}>{max} hr</Text>
+      </View>
+    </View>
   );
 }
 
@@ -209,9 +277,16 @@ function createStyles(theme) {
     },
     field: {
       paddingVertical: 16,
-      gap: 8,
+      gap: 10,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border.light,
+    },
+    goalHeader: {
+      minHeight: 42,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
     },
     label: {
       color: theme.colors.text.primary,
@@ -224,8 +299,8 @@ function createStyles(theme) {
       gap: 10,
     },
     input: {
-      width: 110,
-      minHeight: 48,
+      width: 72,
+      minHeight: 42,
       borderWidth: 1,
       borderColor: theme.colors.border.medium,
       borderRadius: 7,
@@ -233,13 +308,68 @@ function createStyles(theme) {
       color: theme.colors.text.primary,
       fontFamily: theme.typography.families.utility,
       fontVariant: ['tabular-nums'],
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '700',
       paddingHorizontal: 12,
     },
     unit: {
       color: theme.colors.text.secondary,
-      fontSize: 15,
+      fontSize: 13,
+    },
+    valueButton: {
+      minWidth: 76,
+      minHeight: 42,
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    valueButtonText: {
+      color: theme.colors.text.primary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 18,
+      fontWeight: '700',
+    },
+    valueButtonUnit: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
+    },
+    sliderTouchArea: {
+      height: 32,
+      justifyContent: 'center',
+    },
+    sliderTrack: {
+      height: 6,
+      backgroundColor: theme.colors.border.light,
+    },
+    sliderFill: {
+      height: '100%',
+      backgroundColor: theme.colors.primary,
+    },
+    sliderThumb: {
+      position: 'absolute',
+      top: -7,
+      width: 20,
+      height: 20,
+      marginLeft: -10,
+      borderWidth: 2,
+      borderRadius: 10,
+      backgroundColor: theme.colors.surface,
+    },
+    sliderRange: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: -7,
+    },
+    rangeText: {
+      color: theme.colors.text.light,
+      fontSize: 11,
     },
     preview: {
       gap: 4,
