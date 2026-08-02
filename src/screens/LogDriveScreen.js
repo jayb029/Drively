@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
@@ -50,14 +50,15 @@ import {
   stopActiveDriveTracking,
 } from '../services/activeDriveTracking';
 
-function getDefaultTabBarStyle(theme) {
+function getDefaultTabBarStyle(theme, bottomInset) {
+  const tabBarBottomInset = Math.max(bottomInset, 8);
   return {
     backgroundColor: theme.colors.surface,
     borderTopColor: theme.colors.border.light,
     borderTopWidth: 1,
-    paddingBottom: 8,
+    paddingBottom: tabBarBottomInset,
     paddingTop: 7,
-    height: 64,
+    height: 56 + tabBarBottomInset,
     elevation: 0,
   };
 }
@@ -135,6 +136,7 @@ export default function LogDriveScreen({ navigation }) {
     user,
   } = useDriving();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const distanceUnit = settings.distanceUnit || 'metric';
   const alwaysOnWhileTracking = settings.alwaysOnWhileTracking ?? true;
@@ -250,9 +252,9 @@ export default function LogDriveScreen({ navigation }) {
     navigation.setOptions({
       tabBarStyle: isActive || isInPictureInPictureMode
         ? styles.hiddenTabBar
-        : getDefaultTabBarStyle(theme),
+        : getDefaultTabBarStyle(theme, insets.bottom),
     });
-  }, [isActive, isInPictureInPictureMode, navigation, styles, theme]);
+  }, [insets.bottom, isActive, isInPictureInPictureMode, navigation, styles, theme]);
 
   useEffect(() => {
     let cancelled = false;
