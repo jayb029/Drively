@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 
 const LOGS_DIR = `${FileSystem.documentDirectory}drively/logs/`;
 const LOG_FILE = `${LOGS_DIR}debug.log`;
@@ -7,10 +8,20 @@ const LOG_RETENTION_DAYS = 2;
 const REDACTED_VALUE = '[REDACTED]';
 const SENSITIVE_KEY_PATTERN = /(birth|dob|license|permit|phone|signature|password|token|secret|lat|latitude|lon|lng|longitude|coordinate|url)/i;
 
+let logWriteQueue = Promise.resolve();
+
 async function appendLogLine(logLine) {
-  const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
-  const existingContent = fileInfo.exists ? await FileSystem.readAsStringAsync(LOG_FILE) : '';
-  await FileSystem.writeAsStringAsync(LOG_FILE, `${existingContent}${logLine}`);
+  logWriteQueue = logWriteQueue
+    .catch(() => undefined)
+    .then(() => {
+      const logFile = new File(LOG_FILE);
+      if (!logFile.exists) {
+        logFile.create({ intermediates: true });
+      }
+      logFile.write(logLine, { append: true });
+    });
+
+  return logWriteQueue;
 }
 
 function getModifiedDate(modificationTime) {
