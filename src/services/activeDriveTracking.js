@@ -9,6 +9,11 @@ export const ACTIVE_DRIVE_TRACKING_TASK = 'drively-active-drive-tracking-v1';
 
 const ACTIVE_DRIVE_STATE_KEY = 'drively.activeDrive.state.v1';
 const ACTIVE_DRIVE_EVENT = 'DrivelyActiveDriveLocation';
+const TRACKING_PERSIST_INTERVAL_MS = 15000;
+
+let trackingStateCache = null;
+let trackingStateWriteQueue = Promise.resolve();
+let lastTrackingPersistedAt = 0;
 
 function distanceMeters(a, b) {
   const radius = 6371000;
@@ -53,18 +58,33 @@ function getSpeedKmh(point, previousPoint) {
 }
 
 async function getTrackingState() {
+  if (trackingStateCache) return trackingStateCache;
+
   const raw = await AsyncStorage.getItem(ACTIVE_DRIVE_STATE_KEY);
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw);
+    trackingStateCache = JSON.parse(raw);
+    lastTrackingPersistedAt = Date.now();
+    return trackingStateCache;
   } catch {
     return null;
   }
 }
 
-async function setTrackingState(nextState) {
-  await AsyncStorage.setItem(ACTIVE_DRIVE_STATE_KEY, JSON.stringify(nextState));
+async function setTrackingState(nextState, { force = false } = {}) {
+  trackingStateCache = nextState;
+  const now = Date.now();
+  if (!force && now - lastTrackingPersistedAt < TRACKING_PERSIST_INTERVAL_MS) {
+    return;
+  }
+
+  lastTrackingPersistedAt = now;
+  const serializedState = JSON.stringify(nextState);
+  trackingStateWriteQueue = trackingStateWriteQueue
+    .catch(() => undefined)
+    .then(() => AsyncStorage.setItem(ACTIVE_DRIVE_STATE_KEY, serializedState));
+  await trackingStateWriteQueue;
 }
 
 function publishTrackingUpdate(state) {
@@ -176,7 +196,7 @@ export async function startActiveDriveTracking({ startTimestamp, distanceUnit })
     routePoints: [],
     lastPoint: null,
   };
-  await setTrackingState(initialState);
+  await setTrackingState(initialState, { force: true });
   publishTrackingUpdate(initialState);
 
   await Location.startLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK, {
@@ -206,7 +226,7 @@ export async function stopActiveDriveTracking() {
 
   if (state) {
     const nextState = { ...state, active: false };
-    await setTrackingState(nextState);
+    await setTrackingState(nextState, { force: true });
     publishTrackingUpdate(nextState);
     return nextState;
   }
@@ -218,5 +238,8 @@ export async function clearActiveDriveTracking() {
   if (await isActiveDriveTrackingRunning()) {
     await Location.stopLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK);
   }
+  trackingStateCache = null;
+  lastTrackingPersistedAt = 0;
+  await trackingStateWriteQueue.catch(() => undefined);
   await AsyncStorage.removeItem(ACTIVE_DRIVE_STATE_KEY);
 }

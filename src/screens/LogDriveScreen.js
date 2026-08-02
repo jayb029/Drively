@@ -201,7 +201,7 @@ export default function LogDriveScreen({ navigation }) {
   }, [isActive]);
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !isInPictureInPictureMode) return;
 
     updateDrivePipStats({
       title: formatElapsed(elapsedMs),
@@ -210,7 +210,7 @@ export default function LogDriveScreen({ navigation }) {
       distanceText: formatDistanceFromKm(distance / 1000, distanceUnit),
       speedText: formatSpeedFromKmh(currentSpeed, distanceUnit),
     });
-  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive, startTimestamp]);
+  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive, isInPictureInPictureMode, startTimestamp]);
 
   useEffect(() => {
     const subscription = addActiveDriveTrackingListener((event) => {

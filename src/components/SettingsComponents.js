@@ -4,9 +4,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../contexts/ThemeContext';
 
+const styleCache = new WeakMap();
+
+function useSettingsStyles(theme) {
+  return useMemo(() => {
+    if (!styleCache.has(theme)) {
+      styleCache.set(theme, createStyles(theme));
+    }
+    return styleCache.get(theme);
+  }, [theme]);
+}
+
 export function SettingsPage({ children, navigation, subtitle, title }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -33,7 +44,7 @@ export function SettingsPage({ children, navigation, subtitle, title }) {
 
 export function SettingsSection({ children, title }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
 
   return (
     <View style={styles.section}>
@@ -45,7 +56,7 @@ export function SettingsSection({ children, title }) {
 
 export function SettingsActionRow({ danger = false, label, onPress, subtitle, value }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
 
   return (
     <TouchableOpacity
@@ -66,7 +77,7 @@ export function SettingsActionRow({ danger = false, label, onPress, subtitle, va
 
 export function SettingsSwitchRow({ disabled = false, label, onValueChange, subtitle, value }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
 
   return (
     <View style={[styles.row, disabled && styles.disabled]}>
@@ -88,7 +99,7 @@ export function SettingsSwitchRow({ disabled = false, label, onValueChange, subt
 
 export function SettingsChoice({ label, onChange, options, value }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
 
   return (
     <View style={styles.choiceBlock}>
@@ -115,7 +126,7 @@ export function SettingsChoice({ label, onChange, options, value }) {
 
 export function SettingsButton({ disabled = false, label, onPress, secondary = false }) {
   const { theme } = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useSettingsStyles(theme);
   return (
     <TouchableOpacity
       accessibilityRole="button"

@@ -5,23 +5,55 @@ const LOGS_DIR = `${FileSystem.documentDirectory}drively/logs/`;
 const LOG_FILE = `${LOGS_DIR}debug.log`;
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB max log file size
 const LOG_RETENTION_DAYS = 2;
+const LOG_FLUSH_DELAY_MS = 300;
 const REDACTED_VALUE = '[REDACTED]';
 const SENSITIVE_KEY_PATTERN = /(birth|dob|license|permit|phone|signature|password|token|secret|lat|latitude|lon|lng|longitude|coordinate|url)/i;
 
 let logWriteQueue = Promise.resolve();
+let pendingLogLines = [];
+let logFlushTimer = null;
 
-async function appendLogLine(logLine) {
+function queueLogLine(logLine) {
+  pendingLogLines.push(logLine);
+  if (logFlushTimer) return;
+
+  logFlushTimer = setTimeout(() => {
+    logFlushTimer = null;
+    flushPendingLogs().catch((error) => {
+      console.warn('Failed to flush debug logs:', error);
+    });
+  }, LOG_FLUSH_DELAY_MS);
+}
+
+async function appendLogLines(logLines) {
+  if (!logLines.length) return logWriteQueue;
+
   logWriteQueue = logWriteQueue
     .catch(() => undefined)
-    .then(() => {
+    .then(async () => {
+      await ensureLogsDirectoryExists();
       const logFile = new File(LOG_FILE);
+      if (logFile.exists && logFile.size > MAX_LOG_SIZE) {
+        await rotateLogs();
+      }
       if (!logFile.exists) {
         logFile.create({ intermediates: true });
       }
-      logFile.write(logLine, { append: true });
+      logFile.write(logLines.join(''), { append: true });
     });
 
   return logWriteQueue;
+}
+
+async function flushPendingLogs() {
+  if (logFlushTimer) {
+    clearTimeout(logFlushTimer);
+    logFlushTimer = null;
+  }
+
+  const lines = pendingLogLines;
+  pendingLogLines = [];
+  return appendLogLines(lines);
 }
 
 function getModifiedDate(modificationTime) {
@@ -76,8 +108,6 @@ export async function initializeLogger() {
     await Promise.race([
       (async () => {
         await ensureLogsDirectoryExists();
-        await cleanupOldLogs();
-        
         // Log app startup
         await log('Logger initialized', LOG_LEVELS.INFO, 'SYSTEM');
       })(),
@@ -130,51 +160,11 @@ export async function log(message, level = LOG_LEVELS.INFO, component = 'APP', d
     }
 
     const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level,
-      component,
-      message,
-      data: safeData,
-    };
-
     const logLine = `${timestamp} [${level}] [${component}] ${message}${safeData ? ` | Data: ${JSON.stringify(safeData)}` : ''}\n`;
+    queueLogLine(logLine);
 
-    // Check if log file is getting too large (with timeout)
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('File operation timeout')), 1000)
-    );
-
-    try {
-      await ensureLogsDirectoryExists();
-
-      const fileInfo = await Promise.race([
-        FileSystem.getInfoAsync(LOG_FILE),
-        timeoutPromise
-      ]);
-      
-      if (fileInfo.exists && fileInfo.size > MAX_LOG_SIZE) {
-        await Promise.race([
-          rotateLogs(),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Log rotation timeout')), 2000)
-          )
-        ]);
-      }
-
-      // Append to log file (with timeout)
-      await Promise.race([
-        appendLogLine(logLine),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Write timeout')), 1000)
-        )
-      ]);
-    } catch (fileError) {
-      console.warn('File logging failed, using console only:', fileError);
-    }
-
-    // Also log to console in development
-    if (__DEV__) {
+    // Routine console traffic can noticeably stall Metro-connected debug builds.
+    if (__DEV__ && (level === LOG_LEVELS.WARN || level === LOG_LEVELS.ERROR)) {
       const consoleMethod = {
         [LOG_LEVELS.DEBUG]: console.debug,
         [LOG_LEVELS.INFO]: console.info,
@@ -239,6 +229,7 @@ export async function logError(error, component = 'ERROR', context = null) {
  */
 export async function cleanupOldLogs() {
   try {
+    await flushPendingLogs();
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
     if (!fileInfo.exists) {
       return;
@@ -289,14 +280,16 @@ export async function cleanupOldLogs() {
 async function rotateLogs() {
   try {
     const backupFile = `${LOGS_DIR}debug.log.old`;
-    
+    const backupInfo = await FileSystem.getInfoAsync(backupFile);
+    if (backupInfo.exists) {
+      await FileSystem.deleteAsync(backupFile);
+    }
+
     // Move current log to backup
     await FileSystem.moveAsync({
       from: LOG_FILE,
       to: backupFile,
     });
-    
-    await log('Log file rotated due to size limit', LOG_LEVELS.INFO, 'LOGGER');
   } catch (error) {
     console.error('Failed to rotate logs:', error);
   }
@@ -309,6 +302,7 @@ async function rotateLogs() {
  */
 export async function getRecentLogs(lines = 100, level = null) {
   try {
+    await flushPendingLogs();
     await ensureLogsDirectoryExists();
 
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
@@ -339,6 +333,7 @@ export async function getRecentLogs(lines = 100, level = null) {
  */
 export async function exportLogs() {
   try {
+    await flushPendingLogs();
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
     if (!fileInfo.exists || fileInfo.size === 0) {
       throw new Error('No log file found');
@@ -361,6 +356,12 @@ export async function exportLogs() {
  */
 export async function clearLogs() {
   try {
+    if (logFlushTimer) {
+      clearTimeout(logFlushTimer);
+      logFlushTimer = null;
+    }
+    pendingLogLines = [];
+    await logWriteQueue.catch(() => undefined);
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);
     if (fileInfo.exists) {
       await FileSystem.deleteAsync(LOG_FILE);
@@ -376,6 +377,7 @@ export async function clearLogs() {
  */
 export async function getLogStats() {
   try {
+    await flushPendingLogs();
     await ensureLogsDirectoryExists();
 
     const fileInfo = await FileSystem.getInfoAsync(LOG_FILE);

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Appearance, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { lightTheme, darkTheme } from '../utils/theme';
@@ -58,18 +58,6 @@ export function ThemeProvider({ children }) {
   // Get the current theme object
   const theme = isDark ? darkTheme : lightTheme;
 
-  // Debug logging for theme state
-  useEffect(() => {
-    console.log('Theme state update:', {
-      themeMode,
-      systemColorScheme,
-      appearanceColorScheme,
-      effectiveSystemScheme,
-      isDark,
-      isLoading
-    });
-  }, [themeMode, systemColorScheme, appearanceColorScheme, effectiveSystemScheme, isDark, isLoading]);
-
   /**
    * Load saved theme preference from AsyncStorage
    */
@@ -77,12 +65,8 @@ export function ThemeProvider({ children }) {
     const loadThemePreference = async () => {
       try {
         const savedThemeMode = await AsyncStorage.getItem('themeMode');
-        console.log('Loading saved theme mode:', savedThemeMode);
-        
         if (savedThemeMode && Object.values(THEME_MODES).includes(savedThemeMode)) {
           setThemeModeState(savedThemeMode);
-        } else {
-          console.log('No valid saved theme mode found, using system default');
         }
       } catch (error) {
         console.warn('Failed to load theme preference:', error);
@@ -95,27 +79,9 @@ export function ThemeProvider({ children }) {
   }, []);
 
   /**
-   * Watch for system color scheme changes when in system mode
-   * This ensures the theme updates automatically when the user changes
-   * their system appearance settings
-   */
-  useEffect(() => {
-    // Only react to system color scheme changes if we're in system mode
-    if (themeMode === THEME_MODES.SYSTEM) {
-      console.log('System color scheme changed:', {
-        useColorScheme: systemColorScheme,
-        appearanceColorScheme,
-        effective: effectiveSystemScheme
-      });
-      // Force a re-render when system color scheme changes
-      // The isDark calculation will automatically pick up the new system value
-    }
-  }, [systemColorScheme, appearanceColorScheme, themeMode, effectiveSystemScheme]);
-
-  /**
    * Update theme mode and persist to storage
    */
-  const setThemeMode = async (mode) => {
+  const setThemeMode = useCallback(async (mode) => {
     if (!Object.values(THEME_MODES).includes(mode)) {
       console.warn('Invalid theme mode:', mode);
       return;
@@ -125,14 +91,13 @@ export function ThemeProvider({ children }) {
       setThemeModeState(mode);
       await AsyncStorage.setItem('themeMode', mode);
       await logUserAction('change_theme', 'THEME_CONTEXT', { newTheme: mode, previousTheme: themeMode });
-      await logger.info(`Theme mode updated to: ${mode}`, 'THEME_CONTEXT');
     } catch (error) {
       console.warn('Failed to save theme preference:', error);
       await logger.error('Failed to save theme preference', 'THEME_CONTEXT', { error: error.message, mode });
     }
-  };
+  }, [themeMode]);
 
-  const value = {
+  const value = useMemo(() => ({
     theme,
     themeMode,
     isDark,
@@ -144,7 +109,7 @@ export function ThemeProvider({ children }) {
     effectiveSystemScheme, // The one actually being used
     // Material design theme for React Native Paper
     paperTheme: theme.materialTheme,
-  };
+  }), [appearanceColorScheme, effectiveSystemScheme, isDark, isLoading, setThemeMode, systemColorScheme, theme, themeMode]);
 
   return (
     <ThemeContext.Provider value={value}>

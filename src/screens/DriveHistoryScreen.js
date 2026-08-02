@@ -35,17 +35,17 @@ export default function DriveHistoryScreen({ navigation }) {
   const [showFilters, setShowFilters] = useState(false);
   const [showOlderDetections, setShowOlderDetections] = useState(false);
   const distanceUnit = settings.distanceUnit || 'metric';
-  const pendingDetectedEvents = (detectedEvents || [])
+  const pendingDetectedEvents = useMemo(() => (detectedEvents || [])
     .filter((event) => event.status === 'new' || event.status === 'opened')
     .sort((a, b) => (
       Date.parse(b.drivingStartedAt || b.detectedAt || 0) -
       Date.parse(a.drivingStartedAt || a.detectedAt || 0)
-    ));
+    )), [detectedEvents]);
   const visibleDetectedEvents = showOlderDetections
     ? pendingDetectedEvents
     : pendingDetectedEvents.slice(0, 1);
 
-  const processedDrives = [...drives]
+  const processedDrives = useMemo(() => [...drives]
     .filter((drive) => {
       if (filterBy === 'day') return !drive.isNightDrive;
       if (filterBy === 'night') return drive.isNightDrive;
@@ -55,12 +55,14 @@ export default function DriveHistoryScreen({ navigation }) {
       if (sortBy === 'duration') return (Number(b.duration) || 0) - (Number(a.duration) || 0);
       if (sortBy === 'type' && a.isNightDrive !== b.isNightDrive) return a.isNightDrive ? -1 : 1;
       return new Date(`${b.date} ${b.startTime}`) - new Date(`${a.date} ${a.startTime}`);
-    });
+    }), [drives, filterBy, sortBy]);
 
-  const totalMinutes = drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
-  const nightMinutes = drives
-    .filter((drive) => drive.isNightDrive)
-    .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
+  const { nightMinutes, totalMinutes } = useMemo(() => ({
+    totalMinutes: drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0),
+    nightMinutes: drives
+      .filter((drive) => drive.isNightDrive)
+      .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0),
+  }), [drives]);
 
   const confirmDeleteDrive = (drive) => {
     Alert.alert('Delete drive', `Remove the entry from ${formatDateForDisplay(drive.date)}?`, [

@@ -8,6 +8,7 @@ const DATA_DIR = `${FileSystem.documentDirectory}drively/`;
 const MAIN_DATA_FILE = `${DATA_DIR}data.json`;
 const BACKUP_DATA_FILE = `${DATA_DIR}backup.json`;
 const WEB_DATA_KEY = 'drively.data.v1';
+let saveQueue = Promise.resolve();
 
 function isDefaultUserValue(key, value) {
   return DEFAULT_DATA.user[key] === value || value === undefined || value === null || value === '';
@@ -212,20 +213,20 @@ export async function loadData() {
       throw new Error('Invalid data structure');
     }
     
-    let backupData = null;
-    try {
-      const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
-      if (backupFileInfo.exists) {
-        const backupString = await FileSystem.readAsStringAsync(BACKUP_DATA_FILE);
-        backupData = JSON.parse(backupString);
+    let restoredData = data;
+    if (!hasMeaningfulData(data)) {
+      try {
+        const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
+        if (backupFileInfo.exists) {
+          const backupString = await FileSystem.readAsStringAsync(BACKUP_DATA_FILE);
+          restoredData = pickRestoredData(data, JSON.parse(backupString));
+        }
+      } catch (backupError) {
+        console.warn('Backup data unavailable during restore check:', backupError);
       }
-    } catch (backupError) {
-      console.warn('Backup data unavailable during restore check:', backupError);
     }
 
-    const migratedData = migrateData(pickRestoredData(data, backupData));
-    await saveData(migratedData);
-    return migratedData;
+    return migrateData(restoredData);
   } catch (error) {
     console.warn('Main data file corrupted, trying backup:', error);
     
@@ -253,7 +254,7 @@ export async function loadData() {
 /**
  * Save data to main file and create backup
  */
-export async function saveData(data) {
+async function persistData(data) {
   if (Platform.OS === 'web') {
     try {
       await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(migrateData(data)));
@@ -277,7 +278,7 @@ export async function saveData(data) {
     }
     
     // Save new data
-    const dataString = JSON.stringify(data, null, 2);
+    const dataString = JSON.stringify(data);
     await FileSystem.writeAsStringAsync(MAIN_DATA_FILE, dataString);
     
     return true;
@@ -285,6 +286,13 @@ export async function saveData(data) {
     console.error('Failed to save data:', error);
     return false;
   }
+}
+
+export function saveData(data) {
+  saveQueue = saveQueue
+    .catch(() => undefined)
+    .then(() => persistData(data));
+  return saveQueue;
 }
 
 /**

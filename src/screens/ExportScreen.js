@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ export default function ExportScreen({ navigation }) {
   const [exportMode, setExportMode] = useState('share');
 
   // Create styles using current theme
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   useEffect(() => {
     if (!isOfficialPDF) {

@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { loadData, saveData } from '../utils/storage';
-import { logger, logUserAction, logError } from '../utils/logger';
+import { logger, logError } from '../utils/logger';
 import { getAppVersion } from '../utils/appInfo';
 import { 
   calculateCurrentStreak, 
@@ -79,19 +79,8 @@ const initialState = {
 
 // Reducer function
 function drivingReducer(state, action) {
-  // Log all actions for debugging
-  logger.debug(`Action dispatched: ${action.type}`, 'DRIVING_CONTEXT', { 
-    actionType: action.type,
-    payloadType: Array.isArray(action.payload) ? 'array' : typeof action.payload,
-    payloadId: action.payload?.id,
-  });
-
   switch (action.type) {
     case ACTIONS.LOAD_DATA:
-      logger.info('Data loaded successfully', 'DRIVING_CONTEXT', {
-        drivesCount: action.payload.drives?.length || 0,
-        onboardingComplete: action.payload.user?.onboardingComplete || false
-      });
       return {
         ...state,
         ...action.payload,
@@ -100,9 +89,6 @@ function drivingReducer(state, action) {
       };
 
     case ACTIONS.SET_USER_INFO:
-      logger.info('User info updated', 'DRIVING_CONTEXT', {
-        updatedFields: Object.keys(action.payload || {}),
-      });
       return {
         ...state,
         user: {
@@ -123,13 +109,6 @@ function drivingReducer(state, action) {
         lastDriveDate: action.payload.date,
       };
       
-      logger.info('Drive added', 'DRIVING_CONTEXT', {
-        driveId: action.payload.id,
-        duration: action.payload.duration,
-        isNightDrive: action.payload.isNightDrive,
-        newStreakCount: updatedStreaks.current
-      });
-      
       return {
         ...state,
         drives: newDrives,
@@ -147,11 +126,6 @@ function drivingReducer(state, action) {
       const updatedDrives = state.drives.map(drive =>
         drive.id === action.payload.id ? action.payload : drive
       );
-      
-      logger.info('Drive updated', 'DRIVING_CONTEXT', {
-        driveId: action.payload.id,
-        duration: action.payload.duration
-      });
       
       // Recalculate totals
       const dayHours = updatedDrives
@@ -178,11 +152,6 @@ function drivingReducer(state, action) {
 
     case ACTIONS.DELETE_DRIVE:
       const filteredDrives = state.drives.filter(drive => drive.id !== action.payload);
-      
-      logger.info('Drive deleted', 'DRIVING_CONTEXT', {
-        driveId: action.payload,
-        remainingDrives: filteredDrives.length
-      });
       
       // Recalculate totals
       const remainingDayHours = filteredDrives
@@ -273,10 +242,6 @@ function drivingReducer(state, action) {
       };
 
     case ACTIONS.DELETE_DETECTED_EVENT:
-      logger.info('Detected drive removed', 'DRIVING_CONTEXT', {
-        detectedEventId: action.payload,
-      });
-
       return {
         ...state,
         detectedEvents: state.detectedEvents.filter((event) => event.id !== action.payload),
@@ -310,6 +275,9 @@ function drivingReducer(state, action) {
 // Context Provider Component
 export function DrivingProvider({ children }) {
   const [state, dispatch] = useReducer(drivingReducer, initialState);
+  const skipNextPersistenceRef = useRef(false);
+  const persistenceTimerRef = useRef(null);
+  const persistenceQueueRef = useRef(Promise.resolve());
 
   // Load data on mount
   useEffect(() => {
@@ -339,6 +307,7 @@ export function DrivingProvider({ children }) {
           };
         }
         
+        skipNextPersistenceRef.current = true;
         dispatch({ type: ACTIONS.LOAD_DATA, payload: data });
       } catch (error) {
         // Safe error logging
@@ -367,6 +336,7 @@ export function DrivingProvider({ children }) {
 
       try {
         const data = await loadData();
+        skipNextPersistenceRef.current = true;
         dispatch({ type: ACTIONS.LOAD_DATA, payload: data });
       } catch (error) {
         console.error('Failed to refresh data on app foreground:', error);
@@ -378,39 +348,41 @@ export function DrivingProvider({ children }) {
 
   // Save data whenever state changes (except loading)
   useEffect(() => {
-    if (!state.loading) {
-      const saveDataAsync = async () => {
-        try {
-          const dataToSave = {
-            user: state.user,
-            supervisorProfiles: state.supervisorProfiles,
-            drives: state.drives,
-            detectedEvents: state.detectedEvents,
-            streaks: state.streaks,
-            settings: state.settings,
-            version: getAppVersion(),
-          };
-          await saveData(dataToSave);
-          
-          // Safe logger usage
-          if (logger && logger.debug) {
-            await logger.debug('Data saved successfully', 'DRIVING_CONTEXT');
-          }
-        } catch (error) {
-          // Safe error logging
-          if (logError) {
-            try {
-              await logError(error, 'DRIVING_CONTEXT', 'Failed to save data automatically');
-            } catch (logErr) {
-              console.error('Failed to log save error:', logErr);
-            }
-          }
-          console.error('Failed to save data:', error);
-        }
-      };
-      
-      saveDataAsync();
+    if (state.loading) return;
+    if (skipNextPersistenceRef.current) {
+      skipNextPersistenceRef.current = false;
+      return;
     }
+
+    const dataToSave = {
+      user: state.user,
+      supervisorProfiles: state.supervisorProfiles,
+      drives: state.drives,
+      detectedEvents: state.detectedEvents,
+      streaks: state.streaks,
+      settings: state.settings,
+      version: getAppVersion(),
+    };
+
+    if (persistenceTimerRef.current) {
+      clearTimeout(persistenceTimerRef.current);
+    }
+
+    persistenceTimerRef.current = setTimeout(() => {
+      persistenceTimerRef.current = null;
+      persistenceQueueRef.current = persistenceQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          const didSave = await saveData(dataToSave);
+          if (!didSave) {
+            throw new Error('Failed to save app data');
+          }
+        })
+        .catch(async (error) => {
+          console.error('Failed to save data:', error);
+          await logError(error, 'DRIVING_CONTEXT', 'Failed to save data automatically');
+        });
+    }, 250);
   }, [state.user, state.supervisorProfiles, state.drives, state.detectedEvents, state.streaks, state.settings, state.loading]);
 
   // Context value with actions
@@ -483,6 +455,7 @@ export function DrivingProvider({ children }) {
         return false;
       }
 
+      skipNextPersistenceRef.current = true;
       dispatch({
         type: ACTIONS.COMPLETE_ONBOARDING,
         payload: {
