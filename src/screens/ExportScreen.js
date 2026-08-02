@@ -8,7 +8,6 @@ import {
   Alert,
   Share,
   Switch,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -26,17 +25,10 @@ export default function ExportScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const [isOfficialPDF, setIsOfficialPDF] = useState(false);
   const [leaveSupervisorSignatureBlank, setLeaveSupervisorSignatureBlank] = useState(false);
-  const [showModeSelector, setShowModeSelector] = useState(true);
-  const [exportMode, setExportMode] = useState(null); // 'share' or 'save'
+  const [exportMode, setExportMode] = useState('share');
 
   // Create styles using current theme
   const styles = createStyles(theme);
-
-  // Show mode selector when screen is entered
-  useEffect(() => {
-    setShowModeSelector(true);
-    setExportMode(null);
-  }, []);
 
   useEffect(() => {
     if (!isOfficialPDF) {
@@ -415,91 +407,7 @@ export default function ExportScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Mode Selection Modal */}
-      <Modal
-        visible={showModeSelector}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => {
-          // Prevent closing without selection - user must choose a mode
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Choose Export Mode</Text>
-              <Text style={styles.modalSubtitle}>
-                How would you like to handle your exported files?
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.modeOption}
-              onPress={() => {
-                setExportMode('share');
-                setShowModeSelector(false);
-              }}
-            >
-              <View style={styles.modeIcon}>
-                <Text style={styles.modeIconText}>📤</Text>
-              </View>
-              <View style={styles.modeContent}>
-                <Text style={styles.modeTitle}>Share Mode</Text>
-                <Text style={styles.modeDescription}>
-                  Share files directly with other apps, email, cloud storage, or send to another device
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modeOption}
-              onPress={() => {
-                setExportMode('save');
-                setShowModeSelector(false);
-              }}
-            >
-              <View style={styles.modeIcon}>
-                <Text style={styles.modeIconText}>💾</Text>
-              </View>
-              <View style={styles.modeContent}>
-                <Text style={styles.modeTitle}>Save to File</Text>
-                <Text style={styles.modeDescription}>
-                  {Platform.OS === 'android' 
-                    ? 'Use folder picker to choose save location on your device'
-                    : 'Save files using your device\'s file management system'
-                  }
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalBackButton}
-              onPress={() => navigation.goBack()}
-              activeOpacity={0.75}
-            >
-              <Icon name="arrow-left" size={18} color={theme.colors.text.secondary} />
-              <Text style={styles.modalBackText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Current Mode Indicator */}
-        {exportMode && (
-          <View style={styles.modeIndicator}>
-            <Text style={styles.modeIndicatorText}>
-              {exportMode === 'share' ? '📤 Share Mode' : '📁 Save to File Mode'}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setShowModeSelector(true)}
-              style={styles.changeModeButton}
-            >
-              <Text style={styles.changeModeText}>Change</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
@@ -521,6 +429,20 @@ export default function ExportScreen({ navigation }) {
               : 'Choose where to save your data files'
             }
           </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => setExportMode(exportMode === 'share' ? 'save' : 'share')}
+            style={styles.modeToggle}
+          >
+            <Icon
+              name={exportMode === 'share' ? 'folder-outline' : 'share-variant-outline'}
+              size={17}
+              color={theme.colors.primary}
+            />
+            <Text style={styles.modeToggleText}>
+              {exportMode === 'share' ? 'Save files instead' : 'Share files instead'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Statistics Overview */}
@@ -681,114 +603,18 @@ const createStyles = (theme) => StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: theme.colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContainer: {
-    backgroundColor: theme.colors.surface,
-    margin: 20,
-    borderRadius: 7,
-    padding: 20,
-    minWidth: 300,
-    maxWidth: 400,
-    borderWidth: 1,
-    borderColor: theme.colors.border.light,
-  },
-  modalHeader: {
-    marginBottom: 24,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-    marginBottom: 8,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  modeOption: {
+  modeToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderColor: theme.colors.border.light,
-    marginBottom: 12,
-    backgroundColor: theme.colors.surfaceSecondary,
+    alignSelf: 'flex-start',
+    gap: 7,
+    minHeight: 40,
+    marginTop: 10,
   },
-  modeIcon: {
-    width: 28,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  modeIconText: {
-    fontSize: 18,
-  },
-  modeContent: {
-    flex: 1,
-  },
-  modeTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
-    marginBottom: 4,
-  },
-  modeDescription: {
-    fontSize: 13,
-    color: theme.colors.text.secondary,
-    lineHeight: 18,
-  },
-  modalBackButton: {
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    borderRadius: 8,
-  },
-  modalBackText: {
-    fontSize: 16,
-    color: theme.colors.text.secondary,
-    fontWeight: '600',
-  },
-  modeIndicator: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: addTransparency(theme.colors.primary, 0.1),
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-  },
-  modeIndicatorText: {
+  modeToggleText: {
     fontSize: 14,
     fontWeight: '600',
     color: theme.colors.primary,
-  },
-  changeModeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 6,
-  },
-  changeModeText: {
-    fontSize: 12,
-    color: theme.colors.text.inverse,
-    fontWeight: '600',
   },
   scrollContent: {
     padding: 20,
