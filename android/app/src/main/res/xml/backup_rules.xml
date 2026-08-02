@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-  <!-- Durable Drively data: drive logs, goals, supervisor profiles, streaks, and settings. -->
-  <include domain="file" path="drively/data.json" />
-  <include domain="file" path="drively/backup.json" />
+  <!-- Only the directory selected through the in-app Android cloud backup setting is eligible. -->
+  <include domain="file" path="drively/cloud/" />
 </full-backup-content>

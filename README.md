@@ -1,6 +1,6 @@
 # 🛣️ Drively - Driving Log Tracker
 
-A clean, modern, offline-first mobile app to help users (primarily teens) track their required driving hours for permits and licenses. No accounts, no ads, no cloud — just simple, reliable tracking with helpful extras like streaks, freeze days, goals, and export options.
+A clean, modern, offline-first mobile app to help users (primarily teens) track their required driving hours for permits and licenses. No accounts or ads—just simple, reliable tracking with helpful extras like streaks, freeze days, goals, and export options. Android cloud backup is optional and off by default.
 
 ## ✨ Features
 
@@ -35,10 +35,10 @@ A clean, modern, offline-first mobile app to help users (primarily teens) track 
 - Export options: JSON (full backup), CSV (drives), TXT (summary report)
 - Social sharing of progress
 - Regular backup reminders
-- Local file storage with automatic backup
+- Local file storage with an automatic recovery copy
 
 ### ⚙️ Smart Features
-- 100% offline operation
+- Offline core logging and reporting
 - Auto-recovery from corrupted data
 - Customizable night driving hours
 - Backup and restore functionality
@@ -144,8 +144,9 @@ The app uses a local JSON file storage system:
 
 ## 🔒 Privacy & Security
 
-- **100% Offline**: No cloud storage or network requests
-- **Local Storage**: All data stored on device only
+- **Offline-first**: Core logging works without an account or network connection
+- **User-controlled storage**: Logbook data stays on device by default; Android cloud backup can be enabled or disabled in Data and backups
+- **Limited network use**: When enabled, weather lookup sends approximate coordinates directly to Open-Meteo
 - **No Analytics**: No tracking or data collection
 - **No Accounts**: No user registration or authentication required
 - **Transparent**: Open source and auditable

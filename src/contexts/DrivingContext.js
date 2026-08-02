@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
-import { loadData, saveData } from '../utils/storage';
+import { loadData, saveData, setCloudBackupEnabled as persistCloudBackupSetting } from '../utils/storage';
 import { logger, logError } from '../utils/logger';
 import { getAppVersion } from '../utils/appInfo';
 import { 
@@ -60,6 +60,7 @@ const initialState = {
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
     backupReminder: true,
+    cloudBackupEnabled: false,
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
     weatherEnabled: true,
@@ -420,6 +421,19 @@ export function DrivingProvider({ children }) {
     
     updateSettings: (settings) => 
       dispatch({ type: ACTIONS.UPDATE_SETTINGS, payload: settings }),
+
+    setCloudBackupEnabled: async (enabled) => {
+      const nextSettings = {
+        ...state.settings,
+        cloudBackupEnabled: enabled === true,
+      };
+      const didSave = await persistCloudBackupSetting(buildPersistedData({ settings: nextSettings }), enabled);
+      if (didSave) {
+        skipNextPersistenceRef.current = true;
+        dispatch({ type: ACTIONS.UPDATE_SETTINGS, payload: nextSettings });
+      }
+      return didSave;
+    },
 
     addSupervisorProfile: (profile) =>
       dispatch({ type: ACTIONS.ADD_SUPERVISOR_PROFILE, payload: profile }),

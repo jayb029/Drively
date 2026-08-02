@@ -615,8 +615,7 @@ export default function OnboardingScreen({ navigation }) {
       
       <View style={[styles.noticeContainer, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>
-          <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Data Storage:</Text> This app stores all your driving log data locally on your device. 
-          Your driving log data is never sent to the cloud or shared with third parties.
+          <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Data Storage:</Text> Drively stores your driving log on this device and does not upload it to a Drively account. Android cloud backup is off by default and can be enabled later in Data and backups. You control any data you export or share.
         </Text>
         
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>

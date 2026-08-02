@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -13,7 +13,34 @@ import { clearAllData, importDataFromJSON } from '../utils/storage';
 import { logUserAction } from '../utils/logger';
 
 export default function DataSettingsScreen({ navigation }) {
-  const { replaceData, resetData, settings, updateSettings } = useDriving();
+  const { replaceData, resetData, setCloudBackupEnabled, settings, updateSettings } = useDriving();
+  const [changingCloudBackup, setChangingCloudBackup] = useState(false);
+
+  const changeCloudBackup = async (enabled) => {
+    setChangingCloudBackup(true);
+    const didSave = await setCloudBackupEnabled(enabled);
+    setChangingCloudBackup(false);
+
+    if (!didSave) {
+      Alert.alert('Setting not changed', 'Drively could not move your logbook to the requested storage location.');
+    }
+  };
+
+  const requestCloudBackupChange = (enabled) => {
+    if (!enabled) {
+      changeCloudBackup(false);
+      return;
+    }
+
+    Alert.alert(
+      'Enable Android cloud backup?',
+      'Android may copy your full Drively logbook—including driver, supervisor, drive, and location-derived records—to the backup account configured on this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Enable', onPress: () => changeCloudBackup(true) },
+      ]
+    );
+  };
 
   const importBackup = async () => {
     try {
@@ -35,7 +62,13 @@ export default function DataSettingsScreen({ navigation }) {
         {
           text: 'Import',
           onPress: () => {
-            replaceData(importedData);
+            replaceData({
+              ...importedData,
+              settings: {
+                ...importedData.settings,
+                cloudBackupEnabled: !!settings.cloudBackupEnabled,
+              },
+            });
             logUserAction('import_json_backup', 'SETTINGS', { drivesCount: importedData.drives?.length || 0 });
             Alert.alert('Backup imported', 'Your Drively backup has been restored.');
           },
@@ -71,6 +104,15 @@ export default function DataSettingsScreen({ navigation }) {
   return (
     <SettingsPage navigation={navigation} title="Data and backups" subtitle="Export, restore, or remove the logbook stored on this device.">
       <SettingsSection title="Backups">
+        {Platform.OS === 'android' && (
+          <SettingsSwitchRow
+            disabled={changingCloudBackup}
+            label="Android cloud backup"
+            onValueChange={requestCloudBackupChange}
+            subtitle="Allow Android to back up your full logbook to this device's configured backup account. Off by default."
+            value={!!settings.cloudBackupEnabled}
+          />
+        )}
         <SettingsSwitchRow
           label="Backup reminders"
           onValueChange={(value) => updateSettings({ backupReminder: value })}
@@ -82,7 +124,13 @@ export default function DataSettingsScreen({ navigation }) {
       </SettingsSection>
 
       <SettingsSection title="Storage">
-        <SettingsActionRow label="Local app storage" subtitle="Driving records stay on this device unless you export them." value="On device" />
+        <SettingsActionRow
+          label="Logbook storage"
+          subtitle={settings.cloudBackupEnabled
+            ? 'Stored on this device and eligible for Android cloud backup.'
+            : 'Stored on this device unless you export it.'}
+          value={settings.cloudBackupEnabled ? 'Cloud backup on' : 'On device'}
+        />
         <SettingsActionRow danger label="Reset all data" onPress={resetAllData} subtitle="Permanently delete local Drively data." />
       </SettingsSection>
     </SettingsPage>

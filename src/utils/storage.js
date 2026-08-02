@@ -4,11 +4,24 @@ import { Platform } from 'react-native';
 import { getAppVersion } from './appInfo';
 import { getDistanceUnitLabel, getSpeedUnitLabel } from './units';
 
-const DATA_DIR = `${FileSystem.documentDirectory}drively/`;
-const MAIN_DATA_FILE = `${DATA_DIR}data.json`;
-const BACKUP_DATA_FILE = `${DATA_DIR}backup.json`;
+const DATA_ROOT_DIR = `${FileSystem.documentDirectory}drively/`;
+const LOCAL_DATA_DIR = `${DATA_ROOT_DIR}local/`;
+const CLOUD_DATA_DIR = `${DATA_ROOT_DIR}cloud/`;
+const LEGACY_MAIN_DATA_FILE = `${DATA_ROOT_DIR}data.json`;
+const LEGACY_BACKUP_DATA_FILE = `${DATA_ROOT_DIR}backup.json`;
+const CLOUD_BACKUP_PREFERENCE_KEY = 'drively.cloudBackupEnabled.v1';
 const WEB_DATA_KEY = 'drively.data.v1';
 let saveQueue = Promise.resolve();
+let activeCloudBackup = null;
+
+function getDataPaths(cloudBackupEnabled) {
+  const directory = cloudBackupEnabled ? CLOUD_DATA_DIR : LOCAL_DATA_DIR;
+  return {
+    directory,
+    mainFile: `${directory}data.json`,
+    backupFile: `${directory}backup.json`,
+  };
+}
 
 function isDefaultUserValue(key, value) {
   return DEFAULT_DATA.user[key] === value || value === undefined || value === null || value === '';
@@ -82,6 +95,7 @@ const DEFAULT_DATA = {
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
     backupReminder: true,
+    cloudBackupEnabled: false,
     lastBackupDate: null,
     temperatureUnit: 'metric',
     weatherEnabled: true,
@@ -163,10 +177,89 @@ function pickRestoredData(primaryData, backupData) {
 /**
  * Ensure the data directory exists
  */
-async function ensureDirectoryExists() {
-  const dirInfo = await FileSystem.getInfoAsync(DATA_DIR);
+async function ensureDirectoryExists(directory) {
+  const dirInfo = await FileSystem.getInfoAsync(directory);
   if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(DATA_DIR, { intermediates: true });
+    await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  }
+}
+
+async function fileExists(uri) {
+  return (await FileSystem.getInfoAsync(uri)).exists;
+}
+
+async function deleteIfExists(uri) {
+  if (await fileExists(uri)) {
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  }
+}
+
+async function copyIfPresent(from, to) {
+  if (!(await fileExists(from)) || await fileExists(to)) return;
+  await FileSystem.copyAsync({ from, to });
+}
+
+async function migrateLegacyStorageToLocal() {
+  const localPaths = getDataPaths(false);
+  await ensureDirectoryExists(localPaths.directory);
+  await copyIfPresent(LEGACY_MAIN_DATA_FILE, localPaths.mainFile);
+  await copyIfPresent(LEGACY_BACKUP_DATA_FILE, localPaths.backupFile);
+  await deleteIfExists(LEGACY_MAIN_DATA_FILE);
+  await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
+}
+
+async function getCloudBackupPreference() {
+  if (Platform.OS === 'web') return false;
+  if (activeCloudBackup !== null) return activeCloudBackup;
+
+  const storedPreference = await AsyncStorage.getItem(CLOUD_BACKUP_PREFERENCE_KEY);
+  if (storedPreference === 'true' || storedPreference === 'false') {
+    activeCloudBackup = storedPreference === 'true';
+    return activeCloudBackup;
+  }
+
+  const cloudPaths = getDataPaths(true);
+  const localPaths = getDataPaths(false);
+  const restoredCloudDataExists = await fileExists(cloudPaths.mainFile)
+    && !(await fileExists(localPaths.mainFile))
+    && !(await fileExists(LEGACY_MAIN_DATA_FILE));
+
+  activeCloudBackup = restoredCloudDataExists;
+  await AsyncStorage.setItem(CLOUD_BACKUP_PREFERENCE_KEY, String(activeCloudBackup));
+  return activeCloudBackup;
+}
+
+async function writeDataPair(data, cloudBackupEnabled) {
+  const paths = getDataPaths(cloudBackupEnabled);
+  await ensureDirectoryExists(paths.directory);
+  const serializedData = JSON.stringify(migrateData({
+    ...data,
+    settings: {
+      ...(data.settings || {}),
+      cloudBackupEnabled,
+    },
+  }));
+  await FileSystem.writeAsStringAsync(paths.mainFile, serializedData);
+  await FileSystem.writeAsStringAsync(paths.backupFile, serializedData);
+}
+
+export async function setCloudBackupEnabled(data, enabled) {
+  if (Platform.OS === 'web') return false;
+
+  try {
+    const nextEnabled = enabled === true;
+    await writeDataPair(data, nextEnabled);
+
+    const previousPaths = getDataPaths(!nextEnabled);
+    await deleteIfExists(previousPaths.directory);
+    await deleteIfExists(LEGACY_MAIN_DATA_FILE);
+    await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
+    await AsyncStorage.setItem(CLOUD_BACKUP_PREFERENCE_KEY, String(nextEnabled));
+    activeCloudBackup = nextEnabled;
+    return true;
+  } catch (error) {
+    console.error('Failed to change Android cloud backup setting:', error);
+    return false;
   }
 }
 
@@ -196,16 +289,21 @@ export async function loadData() {
   }
 
   try {
-    await ensureDirectoryExists();
+    const cloudBackupEnabled = await getCloudBackupPreference();
+    if (!cloudBackupEnabled) {
+      await migrateLegacyStorageToLocal();
+    }
+    const { directory, mainFile, backupFile } = getDataPaths(cloudBackupEnabled);
+    await ensureDirectoryExists(directory);
     
-    const mainFileInfo = await FileSystem.getInfoAsync(MAIN_DATA_FILE);
+    const mainFileInfo = await FileSystem.getInfoAsync(mainFile);
     if (!mainFileInfo.exists) {
       // First time user, create default data
       await saveData(DEFAULT_DATA);
       return DEFAULT_DATA;
     }
 
-    const dataString = await FileSystem.readAsStringAsync(MAIN_DATA_FILE);
+    const dataString = await FileSystem.readAsStringAsync(mainFile);
     const data = JSON.parse(dataString);
     
     // Validate the data structure
@@ -216,9 +314,9 @@ export async function loadData() {
     let restoredData = data;
     if (!hasMeaningfulData(data)) {
       try {
-        const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
+        const backupFileInfo = await FileSystem.getInfoAsync(backupFile);
         if (backupFileInfo.exists) {
-          const backupString = await FileSystem.readAsStringAsync(BACKUP_DATA_FILE);
+          const backupString = await FileSystem.readAsStringAsync(backupFile);
           restoredData = pickRestoredData(data, JSON.parse(backupString));
         }
       } catch (backupError) {
@@ -231,9 +329,11 @@ export async function loadData() {
     console.warn('Main data file corrupted, trying backup:', error);
     
     try {
-      const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
+      const cloudBackupEnabled = await getCloudBackupPreference();
+      const { backupFile } = getDataPaths(cloudBackupEnabled);
+      const backupFileInfo = await FileSystem.getInfoAsync(backupFile);
       if (backupFileInfo.exists) {
-        const backupString = await FileSystem.readAsStringAsync(BACKUP_DATA_FILE);
+        const backupString = await FileSystem.readAsStringAsync(backupFile);
         const backupData = JSON.parse(backupString);
         
         // Restore from backup
@@ -266,20 +366,29 @@ async function persistData(data) {
   }
 
   try {
-    await ensureDirectoryExists();
+    const cloudBackupEnabled = await getCloudBackupPreference();
+    const { directory, mainFile, backupFile } = getDataPaths(cloudBackupEnabled);
+    await ensureDirectoryExists(directory);
+    const normalizedData = migrateData({
+      ...data,
+      settings: {
+        ...(data.settings || {}),
+        cloudBackupEnabled,
+      },
+    });
     
     // Create backup of current data before overwriting
-    const mainFileInfo = await FileSystem.getInfoAsync(MAIN_DATA_FILE);
+    const mainFileInfo = await FileSystem.getInfoAsync(mainFile);
     if (mainFileInfo.exists) {
       await FileSystem.copyAsync({
-        from: MAIN_DATA_FILE,
-        to: BACKUP_DATA_FILE,
+        from: mainFile,
+        to: backupFile,
       });
     }
     
     // Save new data
-    const dataString = JSON.stringify(data);
-    await FileSystem.writeAsStringAsync(MAIN_DATA_FILE, dataString);
+    const dataString = JSON.stringify(normalizedData);
+    await FileSystem.writeAsStringAsync(mainFile, dataString);
     
     return true;
   } catch (error) {
@@ -315,7 +424,24 @@ export async function importDataFromJSON(jsonString) {
   try {
     const data = JSON.parse(jsonString);
 
-    if (!data.user || !data.drives || !data.streaks || !data.settings) {
+    const isPlainObject = (value) => (
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+    );
+    const numericStreakFields = ['current', 'longest', 'freezeDaysUsed', 'freezeDaysThisMonth'];
+    const hasValidStreakValues = numericStreakFields.every((field) => (
+      data.streaks?.[field] === undefined
+      || (typeof data.streaks[field] === 'number'
+        && Number.isFinite(data.streaks[field])
+        && data.streaks[field] >= 0)
+    ));
+
+    if (
+      !isPlainObject(data.user)
+      || !Array.isArray(data.drives)
+      || !isPlainObject(data.streaks)
+      || !isPlainObject(data.settings)
+      || !hasValidStreakValues
+    ) {
       throw new Error('Invalid backup format');
     }
 
@@ -413,17 +539,12 @@ export async function clearAllData() {
   }
 
   try {
-    await ensureDirectoryExists();
-    
-    const mainFileInfo = await FileSystem.getInfoAsync(MAIN_DATA_FILE);
-    if (mainFileInfo.exists) {
-      await FileSystem.deleteAsync(MAIN_DATA_FILE);
-    }
-    
-    const backupFileInfo = await FileSystem.getInfoAsync(BACKUP_DATA_FILE);
-    if (backupFileInfo.exists) {
-      await FileSystem.deleteAsync(BACKUP_DATA_FILE);
-    }
+    await deleteIfExists(LOCAL_DATA_DIR);
+    await deleteIfExists(CLOUD_DATA_DIR);
+    await deleteIfExists(LEGACY_MAIN_DATA_FILE);
+    await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
+    await AsyncStorage.removeItem(CLOUD_BACKUP_PREFERENCE_KEY);
+    activeCloudBackup = null;
     
     return true;
   } catch (error) {

@@ -675,15 +675,15 @@ ${permitNumberHTML}
             <h3>🔥 Streak Statistics</h3>
             <div class="stat-row">
               <span class="stat-label">Current Streak:</span>
-              <span class="stat-value">${streaks.current} days</span>
+              <span class="stat-value">${escapeHTML(streaks.current)} days</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Longest Streak:</span>
-              <span class="stat-value">${streaks.longest} days</span>
+              <span class="stat-value">${escapeHTML(streaks.longest)} days</span>
             </div>
             <div class="stat-row">
               <span class="stat-label">Freeze Days Used:</span>
-              <span class="stat-value">${streaks.freezeDaysThisMonth} this month</span>
+              <span class="stat-value">${escapeHTML(streaks.freezeDaysThisMonth)} this month</span>
             </div>
           </div>
           ` : `
@@ -962,11 +962,11 @@ export const generateProgressSummaryHTML = (data) => {
               <div class="stat-label">Goal Hours</div>
             </div>
             <div class="stat-box">
-              <div class="stat-value">${streaks.current}</div>
+              <div class="stat-value">${escapeHTML(streaks.current)}</div>
               <div class="stat-label">Current Streak</div>
             </div>
             <div class="stat-box">
-              <div class="stat-value">${streaks.longest}</div>
+              <div class="stat-value">${escapeHTML(streaks.longest)}</div>
               <div class="stat-label">Best Streak</div>
             </div>
           </div>
