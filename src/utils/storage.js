@@ -83,6 +83,7 @@ const DEFAULT_DATA = {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric',
+    weatherEnabled: true,
     distanceUnit: 'metric',
     censorSensitiveInfo: true,
     alwaysOnWhileTracking: true,

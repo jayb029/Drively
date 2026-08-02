@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
@@ -175,7 +175,7 @@ export default function LogDriveScreen({ navigation }) {
   const enteredSupervisorAge = calculateAge(supervisorDateOfBirth);
 
   useEffect(() => {
-    loadWeather();
+    if (settings.weatherEnabled ?? true) loadWeather();
     return () => {
       if (watchRef.current) {
         watchRef.current.remove();
@@ -294,6 +294,7 @@ export default function LogDriveScreen({ navigation }) {
   }, [alwaysOnWhileTracking, isActive]);
 
   const loadWeather = async () => {
+    if (!(settings.weatherEnabled ?? true)) return;
     try {
       setLoadingWeather(true);
       const permission = await Location.requestForegroundPermissionsAsync();
@@ -309,7 +310,9 @@ export default function LogDriveScreen({ navigation }) {
         units
       );
       setWeatherData(nextWeather);
-      setWeather(autoSelectWeatherOption(nextWeather.description, nextWeather.isNight).replace(/^[^\w]+ /, ''));
+      if (!nextWeather.isFallback) {
+        setWeather(autoSelectWeatherOption(nextWeather.description, nextWeather.isNight).replace(/^[^\w]+ /, ''));
+      }
     } catch (error) {
       logError(error, 'TRACKING', 'Unable to load weather for drive');
     } finally {
@@ -585,13 +588,13 @@ export default function LogDriveScreen({ navigation }) {
             <Text style={styles.title}>Log Drive</Text>
             <Text style={styles.subtitle}>{formatDateForDisplay(date)}</Text>
           </View>
-          <TouchableOpacity style={styles.iconButton} onPress={loadWeather}>
+          {(settings.weatherEnabled ?? true) && <TouchableOpacity style={styles.iconButton} onPress={loadWeather}>
             {loadingWeather ? (
               <ActivityIndicator color={theme.colors.primary} />
             ) : (
               <Icon name="weather-partly-cloudy" size={22} color={theme.colors.primary} />
             )}
-          </TouchableOpacity>
+          </TouchableOpacity>}
         </View>
 
         {latestDetectedEvent && !isActive && !startTime && (
@@ -718,7 +721,7 @@ export default function LogDriveScreen({ navigation }) {
           <ChoiceList value={destination} values={DESTINATIONS} onChange={setDestination} styles={styles} />
           <Text style={styles.fieldLabel}>Weather</Text>
           <ChoiceList value={weather} values={WEATHER_OPTIONS} onChange={setWeather} styles={styles} />
-          {weatherData && (
+          {weatherData && (settings.weatherEnabled ?? true) && (
             <Text style={styles.helperText}>
               {weatherData.location}: {weatherData.description}, {weatherData.temperature}
             </Text>

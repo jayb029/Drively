@@ -1,136 +1,125 @@
 /**
- * Weather API Utilities for Drively
- * 
- * This module provides utilities for fetching weather data using the custom API.
+ * Weather helpers backed by Open-Meteo's public, keyless forecast API.
  */
-
 import { logger, logError } from './logger';
 
-const WEATHER_API_BASE_URL = 'https://api.jaysapps.com/api/weather';
+const WEATHER_API_BASE_URL = 'https://api.open-meteo.com/v1/forecast';
 
-/**
- * Fetch weather data from the custom API
- * @param {number} lat - Latitude
- * @param {number} lon - Longitude
- * @param {string} units - Temperature units ('metric' or 'imperial')
- * @returns {Promise<Object>} Weather data object
- */
+const WEATHER_CODES = {
+  0: 'clear sky',
+  1: 'mainly clear',
+  2: 'partly cloudy',
+  3: 'overcast',
+  45: 'fog',
+  48: 'freezing fog',
+  51: 'light drizzle',
+  53: 'drizzle',
+  55: 'heavy drizzle',
+  56: 'freezing drizzle',
+  57: 'heavy freezing drizzle',
+  61: 'light rain',
+  63: 'rain',
+  65: 'heavy rain',
+  66: 'freezing rain',
+  67: 'heavy freezing rain',
+  71: 'light snow',
+  73: 'snow',
+  75: 'heavy snow',
+  77: 'snow grains',
+  80: 'light rain showers',
+  81: 'rain showers',
+  82: 'heavy rain showers',
+  85: 'light snow showers',
+  86: 'heavy snow showers',
+  95: 'thunderstorm',
+  96: 'thunderstorm with hail',
+  99: 'severe thunderstorm with hail',
+};
+
 export async function fetchWeatherData(lat, lon, units = 'metric') {
   try {
     const coarseLat = Number(lat).toFixed(2);
     const coarseLon = Number(lon).toFixed(2);
-    const url = `${WEATHER_API_BASE_URL}?lat=${encodeURIComponent(coarseLat)}&lon=${encodeURIComponent(coarseLon)}&units=${encodeURIComponent(units)}`;
-    
-    logger.debug('Fetching weather data', 'WEATHER_API', { units });
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      throw new Error(`Weather API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(`Weather API error: ${data.error}`);
-    }
-    
-    logger.info('Weather data fetched successfully', 'WEATHER_API', {
-      location: data.location,
-      weather: data.weather,
-      temperature: data.temperature,
-      isNight: data.isNight
+    const params = new URLSearchParams({
+      latitude: coarseLat,
+      longitude: coarseLon,
+      current: 'temperature_2m,weather_code,is_day,visibility,precipitation',
+      temperature_unit: units === 'imperial' ? 'fahrenheit' : 'celsius',
+      precipitation_unit: units === 'imperial' ? 'inch' : 'mm',
+      timezone: 'auto',
+      forecast_days: '1',
     });
-    
+
+    logger.debug('Fetching weather data', 'WEATHER_API', { provider: 'Open-Meteo', units });
+    const response = await fetch(`${WEATHER_API_BASE_URL}?${params.toString()}`);
+    if (!response.ok) throw new Error(`Open-Meteo responded with status ${response.status}`);
+
+    const data = await response.json();
+    if (data.error || !data.current) throw new Error(data.reason || 'Open-Meteo returned no current conditions');
+
+    const current = data.current;
+    const temperatureUnit = data.current_units?.temperature_2m || (units === 'imperial' ? '°F' : '°C');
+    const visibilityValue = Number(current.visibility);
+    const visibilityUnit = data.current_units?.visibility;
+    const visibility = Number.isFinite(visibilityValue)
+      ? units === 'imperial'
+        ? `${(visibilityValue / (visibilityUnit === 'ft' ? 5280 : 1609.344)).toFixed(1)} mi`
+        : `${(visibilityValue / 1000).toFixed(1)} km`
+      : null;
+    const description = WEATHER_CODES[current.weather_code] || 'unknown conditions';
+
+    logger.info('Weather data fetched successfully', 'WEATHER_API', {
+      provider: 'Open-Meteo',
+      weatherCode: current.weather_code,
+      units,
+    });
+
     return {
-      location: data.location,
-      description: data.weather,
-      temperature: data.temperature,
-      visibility: data.visibility,
-      isNight: data.isNight,
-      precipitationNextHour: data.precipitationNextHour,
-      units: units
+      location: 'Current area',
+      description,
+      temperature: `${Math.round(current.temperature_2m)} ${temperatureUnit}`,
+      visibility,
+      isNight: current.is_day === 0,
+      precipitationNextHour: current.precipitation ?? null,
+      units,
+      provider: 'Open-Meteo',
     };
-    
   } catch (error) {
     logError(error, 'WEATHER_API', 'Failed to fetch weather data');
-    
-    // Return fallback data
-    const tempUnit = units === 'imperial' ? '°F' : '°C';
-    const visibilityUnit = units === 'imperial' ? 'mi' : 'km';
-    const fallbackTemp = units === 'imperial' ? '68' : '20';
-    const fallbackVisibility = units === 'imperial' ? '10.0' : '16.0';
-    
     return {
-      location: 'Unknown Location',
+      location: 'Current area',
       description: 'weather data unavailable',
-      temperature: `${fallbackTemp} ${tempUnit}`,
-      visibility: `${fallbackVisibility} ${visibilityUnit}`,
+      temperature: 'Unavailable',
+      visibility: null,
       isNight: false,
       precipitationNextHour: null,
-      units: units,
-      isFallback: true
+      units,
+      provider: 'Open-Meteo',
+      isFallback: true,
     };
   }
 }
 
-/**
- * Auto-select weather option based on description
- * @param {string} description - Weather description from API
- * @param {boolean} isNight - Whether it's currently night time
- * @returns {string} Selected weather option
- */
 export function autoSelectWeatherOption(description, isNight = false) {
   const desc = description.toLowerCase();
-  
-  if (desc.includes('clear') || desc.includes('sunny')) {
-    return isNight ? '🌙 Clear Night' : '☀️ Clear';
-  } else if (desc.includes('partly cloudy') || desc.includes('partly')) {
-    return '⛅ Partly Cloudy';
-  } else if (desc.includes('cloudy') || desc.includes('overcast')) {
-    return '☁️ Cloudy';
-  } else if (desc.includes('rain') || desc.includes('drizzle')) {
-    return '🌧️ Rain';
-  } else if (desc.includes('snow') || desc.includes('blizzard')) {
-    return '🌨️ Snow';
-  } else if (desc.includes('fog') || desc.includes('mist')) {
-    return '🌫️ Fog';
-  } else if (desc.includes('wind')) {
-    return '💨 Windy';
-  }
-  
-  // Default fallback
-  return isNight ? '🌙 Clear Night' : '☀️ Clear';
+  if (desc.includes('clear') || desc.includes('sunny')) return isNight ? '🌙 Clear Night' : '☀️ Clear';
+  if (desc.includes('partly') || desc.includes('mainly clear')) return '⛅ Partly Cloudy';
+  if (desc.includes('cloud') || desc.includes('overcast')) return '☁️ Cloudy';
+  if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('thunderstorm')) return '🌧️ Rain';
+  if (desc.includes('snow') || desc.includes('blizzard')) return '🌨️ Snow';
+  if (desc.includes('fog') || desc.includes('mist')) return '🌫️ Fog';
+  if (desc.includes('wind')) return '💨 Windy';
+  return '';
 }
 
-/**
- * Format temperature display with unit preference
- * @param {number} tempValue - Temperature value
- * @param {string} units - Unit system ('metric' or 'imperial')
- * @returns {string} Formatted temperature string
- */
 export function formatTemperature(tempValue, units = 'metric') {
   const tempUnit = units === 'imperial' ? '°F' : '°C';
   return `${Math.round(tempValue)} ${tempUnit}`;
 }
 
-/**
- * Convert temperature between units
- * @param {number} temp - Temperature value
- * @param {string} fromUnit - Source unit ('metric' or 'imperial')
- * @param {string} toUnit - Target unit ('metric' or 'imperial')
- * @returns {number} Converted temperature
- */
 export function convertTemperature(temp, fromUnit, toUnit) {
   if (fromUnit === toUnit) return temp;
-  
-  if (fromUnit === 'metric' && toUnit === 'imperial') {
-    // Celsius to Fahrenheit
-    return (temp * 9/5) + 32;
-  } else if (fromUnit === 'imperial' && toUnit === 'metric') {
-    // Fahrenheit to Celsius
-    return (temp - 32) * 5/9;
-  }
-  
+  if (fromUnit === 'metric' && toUnit === 'imperial') return (temp * 9 / 5) + 32;
+  if (fromUnit === 'imperial' && toUnit === 'metric') return (temp - 32) * 5 / 9;
   return temp;
 }

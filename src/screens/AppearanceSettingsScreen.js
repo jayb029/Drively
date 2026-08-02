@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -8,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { THEME_MODES, useTheme } from '../contexts/ThemeContext';
@@ -95,16 +95,6 @@ export default function AppearanceSettingsScreen({ navigation }) {
             ]}
             styles={styles}
             value={settings.distanceUnit || 'metric'}
-          />
-          <UnitRow
-            label="Temperature"
-            onChange={(value) => updateSettings({ temperatureUnit: value })}
-            options={[
-              { value: 'imperial', label: 'Fahrenheit' },
-              { value: 'metric', label: 'Celsius' },
-            ]}
-            styles={styles}
-            value={settings.temperatureUnit || 'metric'}
           />
         </View>
       </ScrollView>
@@ -211,8 +201,6 @@ function createStyles(theme) {
     },
     segmentSelected: {
       backgroundColor: theme.colors.surfaceSecondary,
-      borderBottomWidth: 3,
-      borderBottomColor: theme.colors.primary,
     },
     segmentText: {
       color: theme.colors.text.secondary,

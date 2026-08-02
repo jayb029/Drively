@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -19,6 +20,12 @@ export default function SettingsHomeScreen({ navigation }) {
           label: 'Driving goal',
           value: `${user.goalDayHours} total · ${user.goalNightHours} night`,
           onPress: () => navigation.navigate('Goals'),
+        },
+        {
+          icon: 'card-account-details-outline',
+          label: 'Driver information',
+          value: user.driverName || 'Add export details',
+          onPress: () => navigation.navigate('DriverProfile'),
         },
         {
           icon: 'account-supervisor-outline',
@@ -46,7 +53,13 @@ export default function SettingsHomeScreen({ navigation }) {
           icon: 'crosshairs-gps',
           label: 'Drive tracking',
           value: settings.driveDetectionEnabled ? 'Detection on' : 'Detection off',
-          onPress: () => navigation.navigate('AdvancedSettings'),
+          onPress: () => navigation.navigate('DriveTracking'),
+        },
+        {
+          icon: 'weather-partly-cloudy',
+          label: 'Weather lookup',
+          value: (settings.weatherEnabled ?? true) ? 'Enabled' : 'Disabled',
+          onPress: () => navigation.navigate('WeatherSettings'),
         },
       ],
     },
@@ -55,9 +68,19 @@ export default function SettingsHomeScreen({ navigation }) {
       rows: [
         {
           icon: 'database-cog-outline',
-          label: 'Data, updates, and driver info',
-          value: 'Manage',
-          onPress: () => navigation.navigate('AdvancedSettings'),
+          label: 'Data and backups',
+          onPress: () => navigation.navigate('DataSettings'),
+        },
+        {
+          icon: 'information-outline',
+          label: 'About and updates',
+          value: getAppVersion(),
+          onPress: () => navigation.navigate('AboutSettings'),
+        },
+        {
+          icon: 'stethoscope',
+          label: 'Diagnostics',
+          onPress: () => navigation.navigate('Diagnostics'),
         },
       ],
     },

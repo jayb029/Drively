@@ -62,6 +62,7 @@ const initialState = {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric', // 'metric' or 'imperial'
+    weatherEnabled: true,
     distanceUnit: 'metric',
     censorSensitiveInfo: true,
     alwaysOnWhileTracking: true,

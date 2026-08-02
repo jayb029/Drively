@@ -1,6 +1,6 @@
 import React from 'react';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -12,17 +12,22 @@ import DashboardScreen from '../screens/DashboardScreen';
 import LogDriveScreen from '../screens/LogDriveScreen';
 import DriveHistoryScreen from '../screens/DriveHistoryScreen';
 import ExportScreen from '../screens/ExportScreen';
-import SettingsScreen from '../screens/SettingsScreen';
 import SettingsHomeScreen from '../screens/SettingsHomeScreen';
 import GoalSettingsScreen from '../screens/GoalSettingsScreen';
 import AppearanceSettingsScreen from '../screens/AppearanceSettingsScreen';
 import SupervisorProfilesScreen from '../screens/SupervisorProfilesScreen';
+import DriverProfileSettingsScreen from '../screens/DriverProfileSettingsScreen';
+import DriveTrackingSettingsScreen from '../screens/DriveTrackingSettingsScreen';
+import DataSettingsScreen from '../screens/DataSettingsScreen';
+import AboutSettingsScreen from '../screens/AboutSettingsScreen';
+import DiagnosticsSettingsScreen from '../screens/DiagnosticsSettingsScreen';
+import WeatherSettingsScreen from '../screens/WeatherSettingsScreen';
 
 // Context
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 
-const Stack = createStackNavigator();
+const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Tab icon component
@@ -33,25 +38,8 @@ function TabIcon({ children, focused, theme }) {
       justifyContent: 'center',
       width: 28,
       height: 28,
-      borderTopWidth: focused ? 2 : 0,
-      borderTopColor: theme.colors.primary,
     }}>
       <Icon name={children} size={21} color={focused ? theme.colors.primary : theme.colors.text.light} />
-    </View>
-  );
-}
-
-function HeaderBackIcon({ tintColor }) {
-  return (
-    <View style={{
-      width: 36,
-      height: 36,
-      borderRadius: 7,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginLeft: 8,
-    }}>
-      <Icon name="arrow-left" size={22} color={tintColor} />
     </View>
   );
 }
@@ -208,8 +196,7 @@ function AppNavigator() {
             color: theme.colors.text.primary,
           },
           headerTintColor: theme.colors.primary,
-          headerBackTitleVisible: false,
-          headerBackImage: ({ tintColor }) => <HeaderBackIcon tintColor={tintColor || theme.colors.primary} />,
+          headerBackButtonDisplayMode: 'minimal',
         }}
       >
         {!user.onboardingComplete ? (
@@ -249,11 +236,12 @@ function AppNavigator() {
               component={SupervisorProfilesScreen}
               options={{ headerShown: false }}
             />
-            <Stack.Screen
-              name="AdvancedSettings"
-              component={SettingsScreen}
-              options={{ title: 'Advanced settings', headerShown: false }}
-            />
+            <Stack.Screen name="DriverProfile" component={DriverProfileSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DriveTracking" component={DriveTrackingSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DataSettings" component={DataSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AboutSettings" component={AboutSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Diagnostics" component={DiagnosticsSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="WeatherSettings" component={WeatherSettingsScreen} options={{ headerShown: false }} />
           </>
         )}
       </Stack.Navigator>

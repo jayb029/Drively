@@ -156,6 +156,7 @@ export function createDevDrivingData(currentData = {}) {
     backupReminder: true,
     lastBackupDate: null,
     temperatureUnit: 'metric',
+    weatherEnabled: true,
     distanceUnit: 'metric',
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,

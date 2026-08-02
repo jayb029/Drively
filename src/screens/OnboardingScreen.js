@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
   ScrollView,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -110,6 +110,7 @@ export default function OnboardingScreen({ navigation }) {
   const [permitNumber, setPermitNumber] = useState('');
   const [temperatureUnit, setTemperatureUnit] = useState('metric');
   const [distanceUnit, setDistanceUnit] = useState('metric');
+  const [weatherEnabled, setWeatherEnabled] = useState(true);
   const [hasAgreed, setHasAgreed] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const selectedOptionStyle = {
@@ -254,7 +255,7 @@ export default function OnboardingScreen({ navigation }) {
 
     const didComplete = await completeOnboarding({
       userInfo,
-      settings: { temperatureUnit, distanceUnit },
+      settings: { temperatureUnit, distanceUnit, weatherEnabled },
     });
 
     if (!didComplete) {
@@ -263,24 +264,26 @@ export default function OnboardingScreen({ navigation }) {
       return;
     }
 
-    requestOnboardingPermissions();
+    requestOnboardingPermissions(weatherEnabled);
     // Navigation will happen automatically when onboardingComplete becomes true
   };
 
-  const requestOnboardingPermissions = async () => {
+  const requestOnboardingPermissions = async (shouldRequestWeatherLocation) => {
     const permissionSettings = {};
 
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Permission',
-          'Location access is optional but helps us provide accurate weather data for your drive logs. You can still use the app without it.',
-          [{ text: 'OK' }]
-        );
+    if (shouldRequestWeatherLocation) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Location permission',
+            'Location access is optional and only needed for automatic weather lookup. You can still enter weather manually.',
+            [{ text: 'OK' }]
+          );
+        }
+      } catch (error) {
+        console.log('Location permission error:', error);
       }
-    } catch (error) {
-      console.log('Location permission error:', error);
     }
 
     try {
@@ -560,6 +563,25 @@ export default function OnboardingScreen({ navigation }) {
         }))}
       </View>
 
+      <TouchableOpacity
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: weatherEnabled }}
+        style={[styles.weatherChoice, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}
+        onPress={() => setWeatherEnabled((enabled) => !enabled)}
+      >
+        <View style={styles.weatherChoiceCopy}>
+          <Text style={[styles.optionTitle, styles.unitOptionTitle, { color: theme.colors.text.primary }]}>Automatic weather lookup</Text>
+          <Text style={[styles.optionDescription, { color: theme.colors.text.secondary }]}>Send approximate coordinates directly to Open-Meteo when opening the drive logger.</Text>
+        </View>
+        <View style={[
+          styles.checkbox,
+          { borderColor: theme.colors.border.medium, backgroundColor: theme.colors.surface },
+          weatherEnabled && [styles.checkedBox, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }],
+        ]}>
+          {weatherEnabled && <Text style={[styles.checkmark, { color: theme.colors.text.inverse }]}>✓</Text>}
+        </View>
+      </TouchableOpacity>
+
       <Text style={[styles.optionGroupTitle, { color: theme.colors.text.primary }]}>Distance and Speed</Text>
       <View style={styles.optionsContainer}>
         {DISTANCE_OPTIONS.map((option) => renderUnitOption({
@@ -594,12 +616,14 @@ export default function OnboardingScreen({ navigation }) {
       <View style={[styles.noticeContainer, { backgroundColor: theme.colors.surface }]}>
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>
           <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Data Storage:</Text> This app stores all your driving log data locally on your device. 
-          Your data is never sent to the cloud or shared with third parties.
+          Your driving log data is never sent to the cloud or shared with third parties.
         </Text>
         
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>
-          <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Location & Weather:</Text> Your location coordinates WILL be sent to our server 
-          to fetch weather data for your drives. Coordinates are used only for weather lookup and are not stored in app debug logs.
+          <Text style={[styles.boldText, { color: theme.colors.text.primary }]}>Location & Weather:</Text>{' '}
+          {weatherEnabled
+            ? 'Approximate coordinates are sent directly to Open-Meteo for weather lookup. They are not stored in app debug logs.'
+            : 'Automatic weather lookup is off. Drively will not request location for weather or make weather API calls.'}
         </Text>
         
         <Text style={[styles.noticeText, { color: theme.colors.text.primary }]}>
@@ -784,6 +808,17 @@ const createStyles = (theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  weatherChoice: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 16,
+    borderRadius: 7,
+    borderWidth: 1,
+    marginBottom: 24,
+  },
+  weatherChoiceCopy: { flex: 1, gap: 5 },
   selectedOption: {
     shadowOpacity: 0,
     shadowRadius: 0,
