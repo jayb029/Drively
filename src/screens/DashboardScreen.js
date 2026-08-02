@@ -125,6 +125,13 @@ export default function DashboardScreen({ navigation }) {
                 <Text style={styles.emptyTitle}>Your logbook is empty</Text>
                 <Text style={styles.emptyBody}>Start a drive to add your first entry.</Text>
               </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => navigation.navigate('LogDrive')}
+                style={styles.emptyAction}
+              >
+                <Text style={styles.emptyActionText}>Log drive</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.driveList}>
@@ -394,16 +401,18 @@ function createStyles(theme) {
       fontSize: 11,
     },
     emptyState: {
-      minHeight: 82,
+      minHeight: 88,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 13,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
+      borderWidth: 1,
       borderColor: theme.colors.border.light,
-      paddingHorizontal: 4,
+      borderRadius: 7,
+      paddingHorizontal: 14,
+      backgroundColor: theme.colors.surface,
     },
     emptyCopy: {
+      flex: 1,
       gap: 2,
     },
     emptyTitle: {
@@ -414,6 +423,19 @@ function createStyles(theme) {
     emptyBody: {
       color: theme.colors.text.secondary,
       fontSize: 13,
+    },
+    emptyAction: {
+      minHeight: 40,
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
+    },
+    emptyActionText: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
     },
   });
 }
