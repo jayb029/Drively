@@ -32,6 +32,7 @@ export default function DriveHistoryScreen({ navigation }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [filterBy, setFilterBy] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [showFilters, setShowFilters] = useState(false);
   const [showOlderDetections, setShowOlderDetections] = useState(false);
   const distanceUnit = settings.distanceUnit || 'metric';
   const pendingDetectedEvents = (detectedEvents || [])
@@ -184,18 +185,26 @@ export default function DriveHistoryScreen({ navigation }) {
       )}
 
       <View style={styles.controls}>
-        <SegmentedControl onChange={setFilterBy} options={FILTERS} styles={styles} value={filterBy} />
-        <View style={styles.sortLine}>
-          <Text style={styles.sortLabel}>Sort</Text>
-          <View style={styles.sortOptions}>
-            {SORTS.map((sort) => (
-              <TouchableOpacity key={sort.value} onPress={() => setSortBy(sort.value)}>
-                <Text style={[styles.sortOption, sortBy === sort.value && styles.sortOptionSelected]}>{sort.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <View style={styles.filterToolbar}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showFilters }}
+            onPress={() => setShowFilters((current) => !current)}
+            style={[styles.filterButton, (filterBy !== 'all' || sortBy !== 'date') && styles.filterButtonActive]}
+          >
+            <Icon name="filter-variant" size={18} color={theme.colors.primary} />
+            <Text style={styles.filterButtonText}>Filter</Text>
+          </TouchableOpacity>
+          <Text style={styles.resultCount}>{processedDrives.length} entries</Text>
         </View>
-        <Text style={styles.resultCount}>{processedDrives.length} entries</Text>
+        {showFilters && (
+          <View style={styles.filterPanel}>
+            <Text style={styles.filterLabel}>Drive type</Text>
+            <SegmentedControl onChange={setFilterBy} options={FILTERS} styles={styles} value={filterBy} />
+            <Text style={styles.filterLabel}>Sort by</Text>
+            <SegmentedControl onChange={setSortBy} options={SORTS} styles={styles} value={sortBy} />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -413,7 +422,45 @@ function createStyles(theme) {
       fontWeight: '600',
     },
     controls: {
-      gap: 13,
+      gap: 10,
+    },
+    filterToolbar: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    filterButton: {
+      minHeight: 40,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    filterButtonActive: {
+      borderColor: theme.colors.primary,
+    },
+    filterButtonText: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    filterPanel: {
+      gap: 9,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border.light,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    filterLabel: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
+      fontWeight: '600',
     },
     segmented: {
       minHeight: 44,
@@ -442,29 +489,6 @@ function createStyles(theme) {
     },
     segmentTextSelected: {
       color: theme.colors.primary,
-    },
-    sortLine: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 14,
-    },
-    sortLabel: {
-      color: theme.colors.text.secondary,
-      fontSize: 12,
-    },
-    sortOptions: {
-      flex: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    sortOption: {
-      color: theme.colors.text.secondary,
-      fontSize: 12,
-    },
-    sortOptionSelected: {
-      color: theme.colors.primary,
-      fontWeight: '700',
-      textDecorationLine: 'underline',
     },
     resultCount: {
       color: theme.colors.text.light,
