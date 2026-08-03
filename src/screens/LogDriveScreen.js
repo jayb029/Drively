@@ -143,12 +143,10 @@ export default function LogDriveScreen({ navigation }) {
 
   const [date, setDate] = useState(getCurrentDate());
   const [startTime, setStartTime] = useState(null);
-  const [endTime, setEndTime] = useState(null);
   const [startTimestamp, setStartTimestamp] = useState(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisorProfiles[0]?.id || null);
   const [supervisorName, setSupervisorName] = useState('');
@@ -420,96 +418,9 @@ export default function LogDriveScreen({ navigation }) {
     return true;
   };
 
-  const stopDrive = async () => {
-    if (isStopping) return;
-
-    setIsStopping(true);
-    try {
-      const state = await stopActiveDriveTracking();
-      if (state) {
-        setDistance(state.distance || 0);
-        setCurrentSpeed(state.currentSpeed || 0);
-        setMaxSpeed(state.maxSpeed || 0);
-        setRoutePoints(state.routePoints || []);
-        lastPointRef.current = state.lastPoint || null;
-      }
-      setEndTime(getCurrentTime());
-      setElapsedMs(Date.now() - startTimestamp);
-      setIsActive(false);
-      setDrivePipTrackingActive(false);
-      logUserAction('stop_drive', 'LOG_DRIVE');
-    } catch (error) {
-      logError(error, 'TRACKING', 'Unable to stop live drive tracking');
-      Alert.alert('Could not end drive', 'Drive tracking is still active. Try again.');
-    } finally {
-      setIsStopping(false);
-    }
-  };
-
-  const saveDrive = async () => {
-    if (!startTime || !endTime) {
-      Alert.alert('Drive still active', 'Stop the drive before saving it.');
-      return;
-    }
-
-    const supervisor = selectedSupervisor || {
-      name: supervisorName.trim(),
-      dateOfBirth: supervisorDateOfBirth.trim(),
-      age: enteredSupervisorAge,
-      licenseNumber: supervisorLicense.trim(),
-    };
-    const supervisorAge = getSupervisorAge(supervisor);
-    const duration = Math.max(1, Math.round(elapsedMs / 60000));
-    const isNightDrive =
-      isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
-      isNightTime(endTime, settings.nightTimeStart, settings.nightTimeEnd);
-
-    try {
-      setIsSaving(true);
-
-      addDrive({
-        id: Date.now().toString(),
-        date,
-        startTime,
-        endTime,
-        duration,
-        isNightDrive,
-        weather: weather || null,
-        weatherData,
-        skills: skills.length ? skills.join(', ') : null,
-        supervisorId: selectedSupervisorId,
-        supervisorName: supervisor.name || null,
-        supervisorDateOfBirth: supervisor.dateOfBirth || supervisor.birthDate || supervisor.dob || null,
-        supervisorAge,
-        supervisorLicense: supervisor.licenseNumber || null,
-        destination,
-        source: sourceEventId ? 'detected' : 'manual',
-        routeSummary: {
-          distanceKm: Number((distance / 1000).toFixed(2)),
-          averageSpeedKmh: Number(((distance / 1000) / Math.max(duration / 60, 0.016)).toFixed(1)),
-          maxSpeedKmh: Math.round(maxSpeed),
-          samples: routePoints.length,
-        },
-        routePreview: routePoints.filter((_, index) => index % 5 === 0).slice(-40),
-      });
-
-      if (sourceEventId) {
-        updateDetectedEvent({ id: sourceEventId, status: 'logged', loggedAt: new Date().toISOString() });
-      }
-
-      Alert.alert('Drive saved', 'Your drive log has been updated.', [
-        { text: 'History', onPress: () => navigation.navigate('DriveHistory') },
-        { text: 'New drive', onPress: resetForm },
-      ]);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const resetForm = () => {
     setDate(getCurrentDate());
     setStartTime(null);
-    setEndTime(null);
     setStartTimestamp(null);
     setElapsedMs(0);
     setDistance(0);
@@ -523,6 +434,129 @@ export default function LogDriveScreen({ navigation }) {
     clearActiveDriveTracking();
     setSupervisorDateOfBirth('');
     lastPointRef.current = null;
+  };
+
+  const saveDrive = ({
+    finalDistance,
+    finalElapsedMs,
+    finalEndTime,
+    finalMaxSpeed,
+    finalRoutePoints,
+  }) => {
+    const supervisor = selectedSupervisor || {
+      name: supervisorName.trim(),
+      dateOfBirth: supervisorDateOfBirth.trim(),
+      age: enteredSupervisorAge,
+      licenseNumber: supervisorLicense.trim(),
+    };
+    const supervisorAge = getSupervisorAge(supervisor);
+    const duration = Math.max(1, Math.round(finalElapsedMs / 60000));
+    const isNightDrive =
+      isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
+      isNightTime(finalEndTime, settings.nightTimeStart, settings.nightTimeEnd);
+
+    addDrive({
+      id: Date.now().toString(),
+      date,
+      startTime,
+      endTime: finalEndTime,
+      duration,
+      isNightDrive,
+      weather: weather || null,
+      weatherData,
+      skills: skills.length ? skills.join(', ') : null,
+      supervisorId: selectedSupervisorId,
+      supervisorName: supervisor.name || null,
+      supervisorDateOfBirth: supervisor.dateOfBirth || supervisor.birthDate || supervisor.dob || null,
+      supervisorAge,
+      supervisorLicense: supervisor.licenseNumber || null,
+      destination,
+      source: sourceEventId ? 'detected' : 'manual',
+      routeSummary: {
+        distanceKm: Number((finalDistance / 1000).toFixed(2)),
+        averageSpeedKmh: Number(((finalDistance / 1000) / Math.max(duration / 60, 0.016)).toFixed(1)),
+        maxSpeedKmh: Math.round(finalMaxSpeed),
+        samples: finalRoutePoints.length,
+      },
+      routePreview: finalRoutePoints.filter((_, index) => index % 5 === 0).slice(-40),
+    });
+
+    if (sourceEventId) {
+      updateDetectedEvent({ id: sourceEventId, status: 'logged', loggedAt: new Date().toISOString() });
+    }
+  };
+
+  const finishDrive = async (shouldSave) => {
+    if (isStopping) return;
+
+    setIsStopping(true);
+    try {
+      const state = await stopActiveDriveTracking();
+      const finalEndTime = getCurrentTime();
+      const finalElapsedMs = Date.now() - startTimestamp;
+      const finalDistance = state?.distance ?? distance;
+      const finalMaxSpeed = state?.maxSpeed ?? maxSpeed;
+      const finalRoutePoints = state?.routePoints ?? routePoints;
+
+      logUserAction('stop_drive', 'LOG_DRIVE');
+
+      if (shouldSave) {
+        saveDrive({
+          finalDistance,
+          finalElapsedMs,
+          finalEndTime,
+          finalMaxSpeed,
+          finalRoutePoints,
+        });
+        logUserAction('save_drive', 'LOG_DRIVE');
+      } else {
+        if (sourceEventId) {
+          deleteDetectedEvent(sourceEventId);
+        }
+        logUserAction('discard_drive', 'LOG_DRIVE');
+      }
+
+      resetForm();
+
+      if (shouldSave) {
+        Alert.alert('Drive saved', 'The drive was added to your log.', [
+          { text: 'OK', onPress: () => navigation.navigate('Dashboard') },
+        ], { cancelable: false });
+      } else {
+        navigation.navigate('Dashboard');
+      }
+    } catch (error) {
+      logError(error, 'TRACKING', 'Unable to stop live drive tracking');
+      Alert.alert('Could not end drive', 'Drive tracking is still active. Try again.');
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
+  const confirmDiscardDrive = () => {
+    Alert.alert(
+      'Discard this drive?',
+      'This drive will not be saved to your log. This cannot be undone.',
+      [
+        { text: 'No', style: 'cancel', onPress: () => setTimeout(confirmEndDrive, 0) },
+        { text: 'Yes', style: 'destructive', onPress: () => finishDrive(false) },
+      ],
+      { cancelable: false }
+    );
+  };
+
+  const confirmEndDrive = () => {
+    if (isStopping) return;
+
+    Alert.alert(
+      'End this drive?',
+      'Save it to your log, or end it without saving. Tracking continues until you choose.',
+      [
+        { text: 'Keep driving', style: 'cancel' },
+        { text: 'End without saving', style: 'destructive', onPress: confirmDiscardDrive },
+        { text: 'Save drive', onPress: () => finishDrive(true) },
+      ]
+    );
   };
 
   const useDetectedEvent = async () => {
@@ -639,7 +673,7 @@ export default function LogDriveScreen({ navigation }) {
           <View style={styles.activeFooter}>
             <TouchableOpacity
               style={[styles.endDriveButton, isStopping && styles.endDriveButtonDisabled]}
-              onPress={stopDrive}
+              onPress={confirmEndDrive}
               disabled={isStopping}
               accessibilityRole="button"
               accessibilityLabel="End drive"
@@ -651,7 +685,7 @@ export default function LogDriveScreen({ navigation }) {
               )}
               <Text style={styles.endDriveButtonText}>{isStopping ? 'Ending drive' : 'End drive'}</Text>
             </TouchableOpacity>
-            <Text style={styles.activeFooterText}>Review and save the drive after it ends.</Text>
+            <Text style={styles.activeFooterText}>Choose whether to save when you end the drive.</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -697,12 +731,6 @@ export default function LogDriveScreen({ navigation }) {
             </View>
           </View>
         )}
-
-        <View style={styles.metrics}>
-          <Metric label="Elapsed" value={formatElapsed(elapsedMs)} icon="timer-outline" theme={theme} />
-          <Metric label="Distance" value={formatDistanceFromKm(distance / 1000, distanceUnit)} icon="map-marker-distance" theme={theme} />
-          <Metric label="Speed" value={formatSpeedFromKmh(currentSpeed, distanceUnit)} icon="speedometer" theme={theme} />
-        </View>
 
         <View style={styles.alwaysOnCard}>
           <View style={styles.alwaysOnText}>
@@ -810,68 +838,17 @@ export default function LogDriveScreen({ navigation }) {
           <ChoiceList value={skills} values={COMMON_SKILLS} onChange={toggleSkill} styles={styles} multi />
         </Section>
 
-        <View style={styles.actionRow}>
-          {!isActive ? (
-            <TouchableOpacity
-              style={[styles.primaryButton, startTime && !endTime && styles.disabledButton]}
-              onPress={() => startDrive()}
-              disabled={!!startTime && !endTime}
-            >
-              <Icon name="play" size={20} color={theme.colors.text.inverse} />
-              <Text style={styles.primaryButtonText}>Start</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.dangerButton} onPress={stopDrive}>
-              <Icon name="stop" size={20} color={theme.colors.text.inverse} />
-              <Text style={styles.primaryButtonText}>Stop</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[styles.secondaryButton, (!endTime || isSaving) && styles.disabledOutline]}
-            onPress={saveDrive}
-            disabled={!endTime || isSaving}
-          >
-            <Icon name="content-save-outline" size={20} color={theme.colors.primary} />
-            <Text style={styles.secondaryButtonText}>{isSaving ? 'Saving' : 'Save'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {startTime && (
-          <View style={styles.summary}>
-            <Text style={styles.summaryText}>Started {formatTimeForDisplay(startTime)}</Text>
-            {endTime && <Text style={styles.summaryText}>Ended {formatTimeForDisplay(endTime)}</Text>}
-            <Text style={styles.summaryText}>Max speed {formatSpeedFromKmh(maxSpeed, distanceUnit)}</Text>
-          </View>
-        )}
+        <TouchableOpacity
+          accessibilityLabel="Start drive"
+          accessibilityRole="button"
+          style={styles.primaryButton}
+          onPress={() => startDrive()}
+        >
+          <Icon name="play" size={20} color={theme.colors.text.inverse} />
+          <Text style={styles.primaryButtonText}>Start drive</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function Metric({ icon, label, theme, value }) {
-  return (
-    <View style={{
-      flex: 1,
-      minHeight: 94,
-      paddingHorizontal: 12,
-      paddingVertical: 14,
-      justifyContent: 'space-between',
-    }}>
-      <Icon name={icon} size={18} color={theme.colors.instrument.accent} />
-      <View>
-        <Text style={{
-          color: theme.colors.instrument.text,
-          fontFamily: theme.typography.families.utility,
-          fontVariant: ['tabular-nums'],
-          fontSize: 18,
-          fontWeight: '700',
-        }}>
-          {value}
-        </Text>
-        <Text style={{ color: theme.colors.instrument.muted, fontSize: 11, marginTop: 2 }}>{label}</Text>
-      </View>
-    </View>
   );
 }
 
@@ -1180,12 +1157,6 @@ function createStyles(theme) {
       borderColor: theme.colors.error,
       backgroundColor: theme.colors.surface,
     },
-    metrics: {
-      flexDirection: 'row',
-      borderRadius: 7,
-      backgroundColor: theme.colors.instrument.background,
-      overflow: 'hidden',
-    },
     alwaysOnCard: {
       minHeight: 72,
       borderWidth: 1,
@@ -1337,12 +1308,7 @@ function createStyles(theme) {
       fontSize: 13,
       lineHeight: 18,
     },
-    actionRow: {
-      flexDirection: 'row',
-      gap: 12,
-    },
     primaryButton: {
-      flex: 1,
       minHeight: 52,
       borderRadius: 7,
       backgroundColor: theme.colors.primary,
@@ -1351,55 +1317,10 @@ function createStyles(theme) {
       flexDirection: 'row',
       gap: 8,
     },
-    dangerButton: {
-      flex: 1,
-      minHeight: 52,
-      borderRadius: 7,
-      backgroundColor: theme.colors.error,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 8,
-    },
-    secondaryButton: {
-      flex: 1,
-      minHeight: 52,
-      borderRadius: 7,
-      borderWidth: 1,
-      borderColor: theme.colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 8,
-      backgroundColor: theme.colors.surface,
-    },
-    disabledButton: {
-      opacity: 0.5,
-    },
-    disabledOutline: {
-      opacity: 0.45,
-    },
     primaryButtonText: {
       color: theme.colors.text.inverse,
       fontSize: 16,
       fontWeight: '700',
-    },
-    secondaryButtonText: {
-      color: theme.colors.primary,
-      fontSize: 16,
-      fontWeight: '700',
-    },
-    summary: {
-      borderWidth: 1,
-      borderColor: theme.colors.border.light,
-      borderRadius: 8,
-      backgroundColor: theme.colors.surface,
-      padding: 14,
-      gap: 6,
-    },
-    summaryText: {
-      color: theme.colors.text.secondary,
-      fontSize: 14,
     },
   });
 }
