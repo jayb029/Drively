@@ -9,6 +9,7 @@ import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNoti
 import * as TaskManager from 'expo-task-manager';
 import { loadData, saveData } from '../utils/storage';
 import { formatSpeedFromKmh } from '../utils/units';
+import { isActiveDriveTrackingRunning } from './activeDriveTracking';
 
 export const DRIVE_DETECTION_TASK = 'drively-drive-detection-v1';
 
@@ -132,6 +133,18 @@ async function notifyDrivingDetected(event, speedKmh, distanceUnit) {
 
 async function handleLocationBatch(locations) {
   if (!Array.isArray(locations) || locations.length === 0) return;
+
+  if (await isActiveDriveTrackingRunning()) {
+    const state = await getDetectorState();
+    if (state.movingSince !== null || state.lastLocation !== null) {
+      await setDetectorState({
+        ...state,
+        movingSince: null,
+        lastLocation: null,
+      });
+    }
+    return;
+  }
 
   const data = await loadData();
   const sensitivity = data.settings?.driveDetectionSensitivity || 'balanced';
