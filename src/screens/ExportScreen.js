@@ -183,7 +183,7 @@ export default function ExportScreen({ navigation }) {
     }
   };
 
-  const handleExportJSON = async () => {
+  const exportJSONBackup = async () => {
     try {
       setExporting(true);
       
@@ -216,6 +216,17 @@ export default function ExportScreen({ navigation }) {
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleExportJSON = () => {
+    Alert.alert(
+      'Export complete backup?',
+      'This JSON file contains your full Drively logbook, including driver, supervisor, drive, and location-derived records. Only save or share it with a destination you trust.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', onPress: exportJSONBackup },
+      ]
+    );
   };
 
   const handleExportCSV = async () => {
