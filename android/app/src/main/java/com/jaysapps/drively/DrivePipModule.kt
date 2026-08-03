@@ -19,7 +19,10 @@ class DrivePipModule(
 
   @ReactMethod
   fun setTrackingActive(active: Boolean) {
-    currentMainActivity()?.setDriveTrackingActive(active)
+    val activity = currentMainActivity() ?: return
+    activity.runOnUiThread {
+      activity.setDriveTrackingActive(active)
+    }
   }
 
   @ReactMethod
@@ -29,21 +32,31 @@ class DrivePipModule(
     val startTimestampMs = if (stats.hasKey("startTimestamp")) stats.getDouble("startTimestamp").toLong() else 0L
     val distanceText = if (stats.hasKey("distanceText")) stats.getString("distanceText") else null
     val speedText = if (stats.hasKey("speedText")) stats.getString("speedText") else null
-    currentMainActivity()?.updateDrivePipStats(
-      DrivePipStats(
-        title = title ?: "Drively",
-        subtitle = subtitle ?: "Drive tracking active",
-        startTimestampMs = startTimestampMs,
-        distanceText = distanceText ?: "--",
-        speedText = speedText ?: "--",
+    val activity = currentMainActivity() ?: return
+    activity.runOnUiThread {
+      activity.updateDrivePipStats(
+        DrivePipStats(
+          title = title ?: "Drively",
+          subtitle = subtitle ?: "Drive tracking active",
+          startTimestampMs = startTimestampMs,
+          distanceText = distanceText ?: "--",
+          speedText = speedText ?: "--",
+        )
       )
-    )
+    }
   }
 
   @ReactMethod
   fun enterPictureInPicture(promise: Promise) {
-    val didEnter = currentMainActivity()?.enterDrivePictureInPicture() ?: false
-    promise.resolve(didEnter)
+    val activity = currentMainActivity()
+    if (activity == null) {
+      promise.resolve(false)
+      return
+    }
+
+    activity.runOnUiThread {
+      promise.resolve(activity.enterDrivePictureInPicture())
+    }
   }
 
   @ReactMethod

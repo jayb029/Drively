@@ -64,10 +64,14 @@ class MainActivity : ReactActivity() {
   fun setDriveTrackingActive(active: Boolean) {
     driveTrackingActive = active
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      if (active) {
-        updatePictureInPictureParams()
-      } else if (isInPictureInPictureMode) {
-        moveTaskToBack(false)
+      // Always refresh the params so Android 12+ does not retain auto-enter
+      // after the drive has ended.
+      updatePictureInPictureParams()
+      if (!active) {
+        setPipOverlayVisible(false)
+        if (isInPictureInPictureMode) {
+          moveTaskToBack(false)
+        }
       }
     }
   }
@@ -85,9 +89,18 @@ class MainActivity : ReactActivity() {
       return false
     }
 
+    // Put the compact native UI in place before Android snapshots the activity
+    // for the PiP transition. Waiting for the mode-changed callback causes the
+    // first PiP frame to contain the full React Native screen.
+    setPipOverlayVisible(true)
     return try {
-      enterPictureInPictureMode(buildPictureInPictureParams())
+      val didEnter = enterPictureInPictureMode(buildPictureInPictureParams())
+      if (!didEnter) {
+        setPipOverlayVisible(false)
+      }
+      didEnter
     } catch (error: IllegalStateException) {
+      setPipOverlayVisible(false)
       Log.w(TAG, "Unable to enter Picture-in-Picture.", error)
       false
     }
@@ -95,14 +108,27 @@ class MainActivity : ReactActivity() {
 
   override fun onUserLeaveHint() {
     if (driveTrackingActive) {
-      enterDrivePictureInPicture()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // Android 12+ performs the gesture transition using auto-enter. The
+        // overlay still needs to be visible before that transition begins.
+        setPipOverlayVisible(true)
+      } else {
+        enterDrivePictureInPicture()
+      }
     }
     super.onUserLeaveHint()
   }
 
+  override fun onResume() {
+    super.onResume()
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isInPictureInPictureMode) {
+      setPipOverlayVisible(false)
+    }
+  }
+
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-    setPipOverlayVisible(isInPictureInPictureMode)
+    setPipOverlayVisible(isInPictureInPictureMode && driveTrackingActive)
 
     val params = Arguments.createMap().apply {
       putBoolean("isInPictureInPictureMode", isInPictureInPictureMode)
@@ -210,6 +236,7 @@ class MainActivity : ReactActivity() {
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       builder.setAutoEnterEnabled(driveTrackingActive)
+      builder.setSeamlessResizeEnabled(false)
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -230,6 +257,11 @@ class MainActivity : ReactActivity() {
     } catch (error: IllegalStateException) {
       Log.w(TAG, "Unable to update Picture-in-Picture params.", error)
     }
+  }
+
+  override fun onDestroy() {
+    pipUiHandler.removeCallbacks(pipTicker)
+    super.onDestroy()
   }
 
   /**

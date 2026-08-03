@@ -16,9 +16,21 @@ export function setDrivePipTrackingActive(active) {
   DrivePip.setTrackingActive(active);
 }
 
-export function updateDrivePipStats({ title, subtitle }) {
+export function updateDrivePipStats({
+  title,
+  subtitle,
+  startTimestamp,
+  distanceText,
+  speedText,
+}) {
   if (!isDrivePipAvailable()) return;
-  DrivePip.updateStats({ title, subtitle });
+  DrivePip.updateStats({
+    title,
+    subtitle,
+    startTimestamp,
+    distanceText,
+    speedText,
+  });
 }
 
 export async function enterDrivePictureInPicture() {
