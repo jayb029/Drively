@@ -126,6 +126,17 @@ function formatElapsed(ms) {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function createElapsedClock(elapsedMs = 0, updatedAt = Date.now()) {
+  return {
+    elapsedMs: Math.max(0, elapsedMs),
+    updatedAt,
+  };
+}
+
+function readElapsedClock(clock, now = Date.now()) {
+  return clock.elapsedMs + Math.max(0, now - clock.updatedAt);
+}
+
 export default function LogDriveScreen({ navigation }) {
   const {
     addDrive,
@@ -174,6 +185,7 @@ export default function LogDriveScreen({ navigation }) {
   const watchRef = useRef(null);
   const lastPointRef = useRef(null);
   const keepAwakeActiveRef = useRef(false);
+  const elapsedClockRef = useRef(createElapsedClock());
 
   const latestDetectedEvent = detectedEvents?.find((event) => event.status === 'new');
   const latestDetectionStartTimestamp = getDetectionStartTimestamp(latestDetectedEvent);
@@ -194,8 +206,13 @@ export default function LogDriveScreen({ navigation }) {
   useEffect(() => {
     let interval;
     if (isActive && !isPaused) {
+      const updateElapsedTime = () => {
+        setElapsedMs(readElapsedClock(elapsedClockRef.current));
+      };
+
+      updateElapsedTime();
       interval = setInterval(() => {
-        setElapsedMs((value) => value + 1000);
+        updateElapsedTime();
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -220,7 +237,9 @@ export default function LogDriveScreen({ navigation }) {
 
   useEffect(() => {
     const subscription = addActiveDriveTrackingListener((event) => {
-      setElapsedMs(event.elapsedMs);
+      const nextElapsedMs = Math.max(0, Number(event.elapsedMs) || 0);
+      elapsedClockRef.current = createElapsedClock(nextElapsedMs);
+      setElapsedMs(nextElapsedMs);
       setDistance(event.distance);
       setCurrentSpeed(event.currentSpeed);
       setMaxSpeed(event.maxSpeed);
@@ -395,11 +414,13 @@ export default function LogDriveScreen({ navigation }) {
 
     const detectedStartTimestamp = fromDetection ? getDetectionStartTimestamp(detectionEvent) : null;
     const nextStartTimestamp = detectedStartTimestamp || Date.now();
+    const nextElapsedMs = Math.max(0, Date.now() - nextStartTimestamp);
 
     setDate(detectedStartTimestamp ? getDateFromDate(nextStartTimestamp) : getCurrentDate());
     setStartTime(detectedStartTimestamp ? getTimeFromDate(nextStartTimestamp) : getCurrentTime());
     setStartTimestamp(nextStartTimestamp);
-    setElapsedMs(Date.now() - nextStartTimestamp);
+    elapsedClockRef.current = createElapsedClock(nextElapsedMs);
+    setElapsedMs(nextElapsedMs);
     setDistance(0);
     setCurrentSpeed(0);
     setMaxSpeed(0);
@@ -418,6 +439,7 @@ export default function LogDriveScreen({ navigation }) {
       Alert.alert('Tracking Error', 'Could not start live drive tracking. Check location settings and try again.');
       setStartTime(null);
       setStartTimestamp(null);
+      elapsedClockRef.current = createElapsedClock();
       setElapsedMs(0);
       setRoutePoints([]);
       lastPointRef.current = null;
@@ -434,6 +456,7 @@ export default function LogDriveScreen({ navigation }) {
     setDate(getCurrentDate());
     setStartTime(null);
     setStartTimestamp(null);
+    elapsedClockRef.current = createElapsedClock();
     setElapsedMs(0);
     setDistance(0);
     setCurrentSpeed(0);
