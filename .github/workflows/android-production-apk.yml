@@ -123,12 +123,13 @@ jobs:
         working-directory: android
         env:
           NODE_ENV: production
+          GRADLE_JVM_ARGS: -Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8
           DRIVELY_VERSION_CODE: ${{ steps.release.outputs.version_code }}
           DRIVELY_UPLOAD_STORE_FILE: ${{ runner.temp }}/drively-upload.jks
           DRIVELY_UPLOAD_STORE_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_STORE_PASSWORD }}
           DRIVELY_UPLOAD_KEY_ALIAS: ${{ secrets.DRIVELY_UPLOAD_KEY_ALIAS }}
           DRIVELY_UPLOAD_KEY_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --max-workers=4 -Dorg.gradle.jvmargs="$GRADLE_JVM_ARGS"
 
       - name: Verify and name APK
         id: apk
