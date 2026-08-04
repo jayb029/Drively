@@ -320,12 +320,20 @@ export async function getRecentLogs(lines = 100, level = null) {
       filteredLines = allLines.filter(line => line.includes(`[${level}]`));
     }
     
-    // Return most recent lines
-    return filteredLines.slice(-lines);
+    // A null limit is used by the advanced diagnostics screen to show the
+    // complete retained log. Normal callers remain limited to recent entries.
+    return lines === null ? filteredLines : filteredLines.slice(-lines);
   } catch (error) {
     console.error('Failed to get recent logs:', error);
     return [];
   }
+}
+
+/**
+ * Get the complete retained debug log for advanced troubleshooting.
+ */
+export async function getAllLogs(level = null) {
+  return getRecentLogs(null, level);
 }
 
 /**
@@ -393,11 +401,18 @@ export async function getLogStats() {
 
     const logContent = await FileSystem.readAsStringAsync(LOG_FILE);
     const lines = logContent.split('\n').filter(line => line.trim());
+    const levelCounts = lines.reduce((counts, line) => {
+      const match = line.match(/^\S+ \[(DEBUG|INFO|WARN|ERROR)\]/);
+      if (match) counts[match[1]] += 1;
+      return counts;
+    }, { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0 });
     
     return {
       exists: true,
       size: fileInfo.size,
       lineCount: lines.length,
+      warningCount: levelCounts.WARN,
+      errorCount: levelCounts.ERROR,
       lastModified: getModifiedDate(fileInfo.modificationTime),
       sizeFormatted: formatFileSize(fileInfo.size),
     };
