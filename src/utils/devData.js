@@ -1,4 +1,5 @@
 import { calculateCurrentStreak, calculateLongestStreak, formatDateForStorage } from './streaks';
+import { getDriveDayMinutes, getDriveNightMinutes, sumDriveMinutes } from './nightDriving';
 
 const supervisors = [
   {
@@ -82,7 +83,17 @@ function makeDrive(index, supervisor, forceNightDrive = null) {
     startTime: timeFromMinutes(startMinutes),
     endTime: timeFromMinutes(startMinutes + duration),
     duration,
+    dayMinutes: isNightDrive ? 0 : duration,
+    nightMinutes: isNightDrive ? duration : 0,
     isNightDrive,
+    nightCalculation: {
+      version: 1,
+      requestedMethod: 'dev_seed',
+      methodUsed: 'dev_seed',
+      source: 'debug',
+      automaticNightMinutes: isNightDrive ? duration : 0,
+      manuallyAdjusted: false,
+    },
     weather: weatherOptions[index % weatherOptions.length],
     weatherData: null,
     skills: skillSets[index % skillSets.length],
@@ -105,8 +116,9 @@ function makeDrive(index, supervisor, forceNightDrive = null) {
 
 function sumHours(drives, isNightDrive) {
   return drives
-    .filter((drive) => Boolean(drive.isNightDrive) === isNightDrive)
-    .reduce((sum, drive) => sum + (Number(drive.duration) || 0) / 60, 0);
+    .reduce((sum, drive) => sum + (
+      isNightDrive ? getDriveNightMinutes(drive) : getDriveDayMinutes(drive)
+    ) / 60, 0);
 }
 
 function makeMissingGoalDrives(existingDrives, availableSupervisors, user = {}) {
@@ -151,6 +163,7 @@ export function createDevDrivingData(currentData = {}) {
     .filter((drive) => !existingDriveIds.has(drive.id));
   const drives = [...existingDrives, ...missingDrives];
   const settings = {
+    nightDrivingMethod: 'civil_twilight',
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
     backupReminder: true,
@@ -166,8 +179,9 @@ export function createDevDrivingData(currentData = {}) {
     ...currentSettings,
     driveDetectionEnabled: currentSettings.driveDetectionEnabled ?? false,
   };
-  const completedDayHours = sumHours(drives, false);
-  const completedNightHours = sumHours(drives, true);
+  const driveMinutes = sumDriveMinutes(drives);
+  const completedDayHours = driveMinutes.dayMinutes / 60;
+  const completedNightHours = driveMinutes.nightMinutes / 60;
   const latestDrive = drives.reduce((latest, drive) => {
     if (!latest) return drive;
     return new Date(drive.date) > new Date(latest.date) ? drive : latest;

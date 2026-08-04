@@ -32,8 +32,12 @@ import {
   getCurrentTime,
   getTimeFromDate,
   isValidDateOfBirth,
-  isNightTime,
 } from '../utils/time';
+import {
+  calculateNightDrivingSplit,
+  calculateNightDrivingSegments,
+  NIGHT_DRIVING_METHODS,
+} from '../utils/nightDriving';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
 import { formatDistanceFromKm, formatSpeedFromKmh, getSpeedUnitLabel } from '../utils/units';
 import {
@@ -474,13 +478,16 @@ export default function LogDriveScreen({ navigation }) {
     lastPointRef.current = null;
   };
 
-  const saveDrive = ({
+  const buildDriveRecord = ({
     finalDistance,
     finalElapsedMs,
     finalEndTime,
+    finalEndTimestamp,
     finalMaxSpeed,
     finalRoutePoints,
     finalSegments,
+    finalStartTimestamp,
+    split,
   }) => {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
@@ -491,12 +498,42 @@ export default function LogDriveScreen({ navigation }) {
     const supervisorAge = getSupervisorAge(supervisor);
     const duration = Math.max(1, Math.round(finalElapsedMs / 60000));
     const driveId = Date.now().toString();
-    const segments = (finalSegments || []).map((segment, index) => {
+    const trackingSegments = finalSegments?.length ? finalSegments : [{
+      startTimestamp: finalStartTimestamp,
+      endTimestamp: finalEndTimestamp,
+      distance: finalDistance,
+      maxSpeed: finalMaxSpeed,
+      routePoints: finalRoutePoints,
+    }];
+    const segments = trackingSegments.map((segment, index) => {
       const segmentDurationMs = Math.max(0, segment.endTimestamp - segment.startTimestamp);
       const segmentDurationHours = Math.max(segmentDurationMs / 3600000, 0.0001);
       const segmentDistanceKm = (segment.distance || 0) / 1000;
       const segmentStartTime = getTimeFromDate(segment.startTimestamp);
       const segmentEndTime = getTimeFromDate(segment.endTimestamp);
+      const segmentSplit = calculateNightDrivingSplit({
+        durationMinutes: Math.max(1, Math.round(segmentDurationMs / 60000)),
+        endTimestamp: segment.endTimestamp,
+        method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
+        nightEnd: settings.nightTimeEnd,
+        nightStart: settings.nightTimeStart,
+        routePoints: segment.routePoints || [],
+        startTimestamp: segment.startTimestamp,
+      });
+      const classificationSegments = calculateNightDrivingSegments({
+        endTimestamp: segment.endTimestamp,
+        method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
+        nightEnd: settings.nightTimeEnd,
+        nightStart: settings.nightTimeStart,
+        routePoints: segment.routePoints || [],
+        startTimestamp: segment.startTimestamp,
+      }).map((classificationSegment, classificationIndex) => ({
+        ...classificationSegment,
+        id: `${driveId}-segment-${index + 1}-classification-${classificationIndex + 1}`,
+        trackingSegmentIndex: index + 1,
+        startTime: getTimeFromDate(classificationSegment.startTimestamp),
+        endTime: getTimeFromDate(classificationSegment.endTimestamp),
+      }));
 
       return {
         id: `${driveId}-segment-${index + 1}`,
@@ -505,9 +542,11 @@ export default function LogDriveScreen({ navigation }) {
         startTime: segmentStartTime,
         endTime: segmentEndTime,
         durationMinutes: Number((segmentDurationMs / 60000).toFixed(2)),
-        isNightDrive:
-          isNightTime(segmentStartTime, settings.nightTimeStart, settings.nightTimeEnd) ||
-          isNightTime(segmentEndTime, settings.nightTimeStart, settings.nightTimeEnd),
+        dayMinutes: segmentSplit.dayMinutes,
+        nightMinutes: segmentSplit.nightMinutes,
+        isNightDrive: segmentSplit.isNightDrive,
+        nightCalculation: segmentSplit.nightCalculation,
+        classificationSegments,
         routeSummary: {
           distanceKm: Number(segmentDistanceKm.toFixed(2)),
           averageSpeedKmh: Number((segmentDistanceKm / segmentDurationHours).toFixed(1)),
@@ -517,18 +556,19 @@ export default function LogDriveScreen({ navigation }) {
         routePreview: (segment.routePoints || []).filter((_, pointIndex) => pointIndex % 5 === 0).slice(-40),
       };
     });
-    const isNightDrive = segments.length
-      ? segments.some((segment) => segment.isNightDrive)
-      : isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
-        isNightTime(finalEndTime, settings.nightTimeStart, settings.nightTimeEnd);
 
-    addDrive({
+    return {
       id: driveId,
       date,
       startTime,
       endTime: finalEndTime,
+      startedAt: new Date(finalStartTimestamp).toISOString(),
+      endedAt: new Date(finalEndTimestamp).toISOString(),
       duration,
-      isNightDrive,
+      dayMinutes: split.dayMinutes,
+      nightMinutes: split.nightMinutes,
+      isNightDrive: split.isNightDrive,
+      nightCalculation: split.nightCalculation,
       weather: weather || null,
       weatherData,
       skills: skills.length ? skills.join(', ') : null,
@@ -547,11 +587,8 @@ export default function LogDriveScreen({ navigation }) {
       },
       routePreview: finalRoutePoints.filter((_, index) => index % 5 === 0).slice(-40),
       segments,
-    });
-
-    if (sourceEventId) {
-      updateDetectedEvent({ id: sourceEventId, status: 'logged', loggedAt: new Date().toISOString() });
-    }
+      classificationSegments: segments.flatMap((segment) => segment.classificationSegments || []),
+    };
   };
 
   const finishDrive = async (shouldSave) => {
@@ -561,6 +598,7 @@ export default function LogDriveScreen({ navigation }) {
     try {
       const state = await stopActiveDriveTracking();
       const lastSegment = state?.segments?.[state.segments.length - 1];
+      const finalEndTimestamp = lastSegment?.endTimestamp || Date.now();
       const finalEndTime = lastSegment?.endTimestamp
         ? getTimeFromDate(lastSegment.endTimestamp)
         : getCurrentTime();
@@ -573,15 +611,67 @@ export default function LogDriveScreen({ navigation }) {
       logUserAction('stop_drive', 'LOG_DRIVE');
 
       if (shouldSave) {
-        saveDrive({
+        const activeSegments = finalSegments?.length ? finalSegments : [{
+          startTimestamp,
+          endTimestamp: finalEndTimestamp,
+          routePoints: finalRoutePoints,
+        }];
+        const segmentSplits = activeSegments.map((segment) => calculateNightDrivingSplit({
+          durationMinutes: Math.max(1, Math.round((segment.endTimestamp - segment.startTimestamp) / 60000)),
+          endTimestamp: segment.endTimestamp,
+          method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
+          nightEnd: settings.nightTimeEnd,
+          nightStart: settings.nightTimeStart,
+          routePoints: segment.routePoints || [],
+          startTimestamp: segment.startTimestamp,
+        }));
+        const duration = Math.max(1, Math.round(finalElapsedMs / 60000));
+        const calculatedNightMinutes = Math.min(
+          duration,
+          segmentSplits.reduce((total, segmentSplit) => total + segmentSplit.nightMinutes, 0)
+        );
+        const primaryCalculation = segmentSplits[0]?.nightCalculation || {};
+        const split = {
+          dayMinutes: duration - calculatedNightMinutes,
+          nightMinutes: calculatedNightMinutes,
+          isNightDrive: calculatedNightMinutes > 0,
+          nightCalculation: {
+            ...primaryCalculation,
+            automaticNightMinutes: calculatedNightMinutes,
+            manuallyAdjusted: false,
+            source: activeSegments.length > 1 ? 'route_segments' : primaryCalculation.source,
+          },
+        };
+        const drive = buildDriveRecord({
           finalDistance,
           finalElapsedMs,
           finalEndTime,
+          finalEndTimestamp,
           finalMaxSpeed,
           finalRoutePoints,
           finalSegments,
+          finalStartTimestamp: startTimestamp,
+          split,
         });
-        logUserAction('save_drive', 'LOG_DRIVE');
+        addDrive(drive);
+        if (sourceEventId) {
+          updateDetectedEvent({ id: sourceEventId, status: 'logged', loggedAt: new Date().toISOString() });
+        }
+        logUserAction('save_drive', 'LOG_DRIVE', {
+          dayMinutes: split.dayMinutes,
+          nightMinutes: split.nightMinutes,
+          method: split.nightCalculation?.methodUsed,
+        });
+        resetForm();
+        Alert.alert(
+          'Drive saved',
+          `${split.dayMinutes} min day · ${split.nightMinutes} min night`,
+          [
+            { text: 'Edit split', onPress: () => navigation.navigate('DriveHistory', { editDriveId: drive.id }) },
+            { text: 'Done', onPress: () => navigation.navigate('Dashboard') },
+          ],
+          { cancelable: false }
+        );
       } else {
         if (sourceEventId) {
           deleteDetectedEvent(sourceEventId);
@@ -589,13 +679,8 @@ export default function LogDriveScreen({ navigation }) {
         logUserAction('discard_drive', 'LOG_DRIVE');
       }
 
-      resetForm();
-
-      if (shouldSave) {
-        Alert.alert('Drive saved', 'The drive was added to your log.', [
-          { text: 'OK', onPress: () => navigation.navigate('Dashboard') },
-        ], { cancelable: false });
-      } else {
+      if (!shouldSave) {
+        resetForm();
         navigation.navigate('Dashboard');
       }
     } catch (error) {

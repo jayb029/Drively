@@ -13,6 +13,7 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { logUserAction } from '../utils/logger';
 import { formatDuration } from '../utils/time';
+import { sumDriveMinutes } from '../utils/nightDriving';
 
 export default function GoalSettingsScreen({ navigation }) {
   const { drives, setUserInfo, user } = useDriving();
@@ -23,10 +24,7 @@ export default function GoalSettingsScreen({ navigation }) {
 
   const total = Number(totalHours);
   const night = Number(nightHours);
-  const totalLogged = drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
-  const nightLogged = drives
-    .filter((drive) => drive.isNightDrive)
-    .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
+  const { totalMinutes: totalLogged, nightMinutes: nightLogged } = sumDriveMinutes(drives);
   const valid = Number.isFinite(total) && Number.isFinite(night) && total > 0 && night >= 0 && night <= total;
 
   const saveGoals = () => {

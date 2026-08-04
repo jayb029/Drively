@@ -23,6 +23,7 @@ import DataSettingsScreen from '../screens/DataSettingsScreen';
 import AboutSettingsScreen from '../screens/AboutSettingsScreen';
 import DiagnosticsSettingsScreen from '../screens/DiagnosticsSettingsScreen';
 import WeatherSettingsScreen from '../screens/WeatherSettingsScreen';
+import NightDrivingSettingsScreen from '../screens/NightDrivingSettingsScreen';
 
 // Context
 import { useDriving } from '../contexts/DrivingContext';
@@ -245,6 +246,7 @@ function AppNavigator() {
             <Stack.Screen name="AboutSettings" component={AboutSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Diagnostics" component={DiagnosticsSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="WeatherSettings" component={WeatherSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="NightDrivingSettings" component={NightDrivingSettingsScreen} options={{ headerShown: false }} />
           </>
         )}
       </Stack.Navigator>

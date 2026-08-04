@@ -61,6 +61,14 @@ export default function SettingsHomeScreen({ navigation }) {
           value: (settings.weatherEnabled ?? true) ? 'Enabled' : 'Disabled',
           onPress: () => navigation.navigate('WeatherSettings'),
         },
+        {
+          icon: 'weather-sunset',
+          label: 'Night driving',
+          value: settings.nightDrivingMethod === 'custom_hours'
+            ? `${settings.nightTimeStart}–${settings.nightTimeEnd}`
+            : settings.nightDrivingMethod === 'sunset_to_sunrise' ? 'Sunset to sunrise' : 'Civil twilight',
+          onPress: () => navigation.navigate('NightDrivingSettings'),
+        },
       ],
     },
     {

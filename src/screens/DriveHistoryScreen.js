@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SensitiveText } from '../components/SensitiveInfo';
@@ -13,6 +13,15 @@ import {
   getTimeFromDate,
 } from '../utils/time';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
+import {
+  applyNightMinuteAdjustment,
+  buildAdjustedClassificationSegments,
+  getDriveDayMinutes,
+  getDriveNightMinutes,
+  getDriveTypeLabel,
+  getNightCalculationLabel,
+  sumDriveMinutes,
+} from '../utils/nightDriving';
 
 const FILTERS = [
   { value: 'all', label: 'All' },
@@ -26,8 +35,8 @@ const SORTS = [
   { value: 'type', label: 'Night first' },
 ];
 
-export default function DriveHistoryScreen({ navigation }) {
-  const { deleteDetectedEvent, deleteDrive, detectedEvents, drives, settings } = useDriving();
+export default function DriveHistoryScreen({ navigation, route }) {
+  const { deleteDetectedEvent, deleteDrive, detectedEvents, drives, settings, updateDrive } = useDriving();
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [filterBy, setFilterBy] = useState('all');
@@ -35,6 +44,8 @@ export default function DriveHistoryScreen({ navigation }) {
   const [showFilters, setShowFilters] = useState(false);
   const [showOlderDetections, setShowOlderDetections] = useState(false);
   const [expandedDriveId, setExpandedDriveId] = useState(null);
+  const [editingDriveId, setEditingDriveId] = useState(null);
+  const [nightMinuteInput, setNightMinuteInput] = useState('0');
   const distanceUnit = settings.distanceUnit || 'metric';
   const pendingDetectedEvents = useMemo(() => (detectedEvents || [])
     .filter((event) => event.status === 'new' || event.status === 'opened')
@@ -48,22 +59,62 @@ export default function DriveHistoryScreen({ navigation }) {
 
   const processedDrives = useMemo(() => [...drives]
     .filter((drive) => {
-      if (filterBy === 'day') return !drive.isNightDrive;
-      if (filterBy === 'night') return drive.isNightDrive;
+      if (filterBy === 'day') return getDriveDayMinutes(drive) > 0;
+      if (filterBy === 'night') return getDriveNightMinutes(drive) > 0;
       return true;
     })
     .sort((a, b) => {
       if (sortBy === 'duration') return (Number(b.duration) || 0) - (Number(a.duration) || 0);
-      if (sortBy === 'type' && a.isNightDrive !== b.isNightDrive) return a.isNightDrive ? -1 : 1;
+      if (sortBy === 'type') return getDriveNightMinutes(b) - getDriveNightMinutes(a);
       return new Date(`${b.date} ${b.startTime}`) - new Date(`${a.date} ${a.startTime}`);
     }), [drives, filterBy, sortBy]);
 
-  const { nightMinutes, totalMinutes } = useMemo(() => ({
-    totalMinutes: drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0),
-    nightMinutes: drives
-      .filter((drive) => drive.isNightDrive)
-      .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0),
-  }), [drives]);
+  const { nightMinutes, totalMinutes } = useMemo(() => sumDriveMinutes(drives), [drives]);
+
+  useEffect(() => {
+    const editDriveId = route?.params?.editDriveId;
+    const drive = drives.find((item) => item.id === editDriveId);
+    if (!drive) return;
+    setExpandedDriveId(drive.id);
+    setEditingDriveId(drive.id);
+    setNightMinuteInput(String(getDriveNightMinutes(drive)));
+    navigation.setParams({ editDriveId: undefined });
+  }, [drives, navigation, route?.params?.editDriveId]);
+
+  const beginEditingSplit = (drive) => {
+    setExpandedDriveId(drive.id);
+    setEditingDriveId(drive.id);
+    setNightMinuteInput(String(getDriveNightMinutes(drive)));
+  };
+
+  const saveNightSplit = (drive) => {
+    const adjusted = applyNightMinuteAdjustment({
+      dayMinutes: getDriveDayMinutes(drive),
+      nightMinutes: getDriveNightMinutes(drive),
+      nightCalculation: drive.nightCalculation,
+    }, nightMinuteInput);
+    const classificationSegments = buildAdjustedClassificationSegments(drive, adjusted.nightMinutes)
+      .map((segment, index) => ({
+        ...segment,
+        id: `${drive.id}-classification-${index + 1}`,
+        startTime: getTimeFromDate(segment.startTimestamp),
+        endTime: getTimeFromDate(segment.endTimestamp),
+      }));
+    const segments = Array.isArray(drive.segments)
+      ? drive.segments.map((segment, index) => ({
+        ...segment,
+        classificationSegments: classificationSegments.filter((item) => item.trackingSegmentIndex === index + 1),
+      }))
+      : drive.segments;
+
+    updateDrive({
+      ...drive,
+      ...adjusted,
+      classificationSegments,
+      segments,
+    });
+    setEditingDriveId(null);
+  };
 
   const confirmDeleteDrive = (drive) => {
     Alert.alert('Delete drive', `Remove the entry from ${formatDateForDisplay(drive.date)}?`, [
@@ -83,15 +134,24 @@ export default function DriveHistoryScreen({ navigation }) {
     const groupedSegments = Array.isArray(drive.segments) && drive.segments.length > 1
       ? drive.segments
       : [];
+    const classificationSegments = Array.isArray(drive.classificationSegments)
+      ? drive.classificationSegments
+      : [];
+    const visibleSegments = classificationSegments.length > 1
+      ? classificationSegments
+      : groupedSegments;
     const isExpanded = expandedDriveId === drive.id;
+    const isEditing = editingDriveId === drive.id;
 
     return (
       <View style={[styles.driveRow, index < processedDrives.length - 1 && styles.driveRowBorder]}>
         <View style={styles.typeLine}>
         <Icon
-          name={drive.isNightDrive ? 'weather-night' : 'white-balance-sunny'}
+          name={getDriveDayMinutes(drive) > 0 && getDriveNightMinutes(drive) > 0
+            ? 'weather-sunset'
+            : getDriveNightMinutes(drive) > 0 ? 'weather-night' : 'white-balance-sunny'}
           size={17}
-          color={drive.isNightDrive ? theme.colors.secondary : theme.colors.primary}
+          color={getDriveNightMinutes(drive) > 0 ? theme.colors.secondary : theme.colors.primary}
         />
         </View>
         <View style={styles.driveCopy}>
@@ -103,6 +163,42 @@ export default function DriveHistoryScreen({ navigation }) {
           {formatTimeForDisplay(drive.startTime)}–{formatTimeForDisplay(drive.endTime)}
           {drive.destination ? ` · ${drive.destination}` : ''}
         </Text>
+        <Text style={styles.driveDetail}>
+          {getDriveTypeLabel(drive)}
+          {getDriveNightMinutes(drive) > 0 ? ` · ${formatDuration(getDriveNightMinutes(drive))} night` : ''}
+        </Text>
+        <View style={styles.calculationLine}>
+          <Text style={styles.calculationDetail}>{getNightCalculationLabel(drive.nightCalculation)}</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={() => beginEditingSplit(drive)}>
+            <Text style={styles.editSplitText}>Edit split</Text>
+          </TouchableOpacity>
+        </View>
+        {isEditing && (
+          <View style={styles.splitEditor}>
+            <View style={styles.splitEditorCopy}>
+              <Text style={styles.splitEditorTitle}>Night minutes</Text>
+              <Text style={styles.splitEditorBody}>Changing this moves the day/night boundary.</Text>
+            </View>
+            <TextInput
+              accessibilityLabel="Night minutes"
+              keyboardType="number-pad"
+              maxLength={4}
+              onChangeText={(value) => {
+                const numeric = value.replace(/[^0-9]/g, '');
+                setNightMinuteInput(numeric === '' ? '' : String(Math.min(Number(drive.duration) || 0, Number(numeric))));
+              }}
+              selectTextOnFocus
+              style={styles.splitInput}
+              value={nightMinuteInput}
+            />
+            <TouchableOpacity accessibilityRole="button" onPress={() => saveNightSplit(drive)} style={styles.saveSplitButton}>
+              <Text style={styles.saveSplitText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" onPress={() => setEditingDriveId(null)} style={styles.cancelSplitButton}>
+              <Text style={styles.cancelSplitText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {!!drive.supervisorName && (
           <View style={styles.supervisorLine}>
             <Text style={styles.driveDetail}>With </Text>
@@ -119,7 +215,7 @@ export default function DriveHistoryScreen({ navigation }) {
             {' · '}avg {formatSpeedFromKmh(drive.routeSummary.averageSpeedKmh, distanceUnit)}
           </Text>
         )}
-        {groupedSegments.length > 0 && (
+        {visibleSegments.length > 1 && (
           <View style={styles.segmentGroup}>
             <TouchableOpacity
               accessibilityRole="button"
@@ -128,7 +224,9 @@ export default function DriveHistoryScreen({ navigation }) {
               style={styles.segmentGroupButton}
             >
               <Icon name="source-branch" size={16} color={theme.colors.primary} />
-              <Text style={styles.segmentGroupLabel}>{groupedSegments.length} grouped segments</Text>
+              <Text style={styles.segmentGroupLabel}>
+                {classificationSegments.length > 1 ? 'Day/night breakdown' : `${groupedSegments.length} driving segments`}
+              </Text>
               <Icon
                 name={isExpanded ? 'chevron-up' : 'chevron-down'}
                 size={17}
@@ -137,15 +235,17 @@ export default function DriveHistoryScreen({ navigation }) {
             </TouchableOpacity>
             {isExpanded && (
               <View style={styles.segmentList}>
-                {groupedSegments.map((segment, segmentIndex) => (
+                {visibleSegments.map((segment, segmentIndex) => (
                   <View key={segment.id || `${drive.id}-${segmentIndex}`} style={styles.segmentRow}>
-                    <Text style={styles.segmentNumber}>{segmentIndex + 1}</Text>
+                    <Text style={[styles.segmentNumber, segment.isNightDrive && styles.nightSegmentNumber]}>
+                      {classificationSegments.length > 1 ? (segment.isNightDrive ? 'N' : 'D') : segmentIndex + 1}
+                    </Text>
                     <View style={styles.segmentCopy}>
                       <Text style={styles.segmentTime}>
-                        {formatTimeForDisplay(segment.startTime)}–{formatTimeForDisplay(segment.endTime)}
+                        {formatTimeForDisplay(segment.startTime || getTimeFromDate(segment.startTimestamp))}–{formatTimeForDisplay(segment.endTime || getTimeFromDate(segment.endTimestamp))}
                       </Text>
                       <Text style={styles.segmentMeta}>
-                        {formatSegmentDuration(segment.durationMinutes)}
+                        {classificationSegments.length > 1 ? `${segment.isNightDrive ? 'Night' : 'Day'} · ` : ''}{formatSegmentDuration(segment.durationMinutes)}
                         {segment.routeSummary
                           ? ` · ${formatDistanceFromKm(segment.routeSummary.distanceKm, distanceUnit)}`
                           : ''}
@@ -601,6 +701,55 @@ function createStyles(theme) {
       color: theme.colors.text.secondary,
       fontSize: 11,
     },
+    calculationDetail: {
+      color: theme.colors.text.light,
+      fontSize: 10,
+    },
+    calculationLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    editSplitText: {
+      color: theme.colors.primary,
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    splitEditor: {
+      marginTop: 5,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      borderColor: theme.colors.border.light,
+      gap: 8,
+    },
+    splitEditorCopy: { gap: 2 },
+    splitEditorTitle: { color: theme.colors.text.primary, fontSize: 12, fontWeight: '700' },
+    splitEditorBody: { color: theme.colors.text.secondary, fontSize: 11 },
+    splitInput: {
+      width: 84,
+      minHeight: 42,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+      color: theme.colors.text.primary,
+      paddingHorizontal: 10,
+      textAlign: 'center',
+      fontFamily: theme.typography.families.utility,
+      fontSize: 18,
+      fontWeight: '700',
+    },
+    saveSplitButton: {
+      minHeight: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 7,
+      backgroundColor: theme.colors.primary,
+    },
+    saveSplitText: { color: theme.colors.text.inverse, fontSize: 13, fontWeight: '700' },
+    cancelSplitButton: { minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+    cancelSplitText: { color: theme.colors.text.secondary, fontSize: 12, fontWeight: '600' },
     segmentGroup: {
       marginTop: 4,
       borderTopWidth: 1,
@@ -636,6 +785,9 @@ function createStyles(theme) {
       fontSize: 11,
       fontWeight: '700',
       textAlign: 'center',
+    },
+    nightSegmentNumber: {
+      color: theme.colors.secondaryDark,
     },
     segmentCopy: {
       flex: 1,

@@ -6,6 +6,7 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateForDisplay, formatDuration, getCurrentDate } from '../utils/time';
 import { formatDistanceFromKm } from '../utils/units';
+import { getDriveDayMinutes, getDriveNightMinutes, getDriveTypeLabel, sumDriveMinutes } from '../utils/nightDriving';
 
 export default function DashboardScreen({ navigation }) {
   const { detectedEvents, drives, loading, settings, user } = useDriving();
@@ -15,10 +16,7 @@ export default function DashboardScreen({ navigation }) {
 
   if (loading) return null;
 
-  const totalMinutes = drives.reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
-  const nightMinutes = drives
-    .filter((drive) => drive.isNightDrive)
-    .reduce((sum, drive) => sum + (Number(drive.duration) || 0), 0);
+  const { totalMinutes, nightMinutes } = sumDriveMinutes(drives);
   const totalGoalMinutes = Math.max(1, Number(user.goalDayHours) * 60);
   const nightGoalMinutes = Math.max(1, Number(user.goalNightHours) * 60);
   const totalPercent = Math.min(100, Math.round((totalMinutes / totalGoalMinutes) * 100));
@@ -144,7 +142,10 @@ export default function DashboardScreen({ navigation }) {
                   <View style={styles.driveMeta}>
                     <Text style={styles.driveDuration}>{formatDuration(drive.duration)}</Text>
                     <Text style={styles.driveDistance}>
-                      {drive.isNightDrive ? 'Night' : 'Day'}
+                      {getDriveTypeLabel(drive)}
+                      {getDriveDayMinutes(drive) > 0 && getDriveNightMinutes(drive) > 0
+                        ? ` · ${formatDuration(getDriveNightMinutes(drive))} night`
+                        : ''}
                       {drive.routeSummary?.distanceKm
                         ? ` · ${formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)}`
                         : ''}

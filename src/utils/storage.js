@@ -3,6 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { getAppVersion } from './appInfo';
 import { getDistanceUnitLabel, getSpeedUnitLabel } from './units';
+import {
+  getDriveDayMinutes,
+  getDriveNightMinutes,
+  getNightCalculationLabel,
+  normalizeDriveNightFields,
+  sumDriveMinutes,
+} from './nightDriving';
 
 const DATA_ROOT_DIR = `${FileSystem.documentDirectory}drively/`;
 const LOCAL_DATA_DIR = `${DATA_ROOT_DIR}local/`;
@@ -51,17 +58,12 @@ function dedupeByIdentity(items, identityBuilder) {
 }
 
 function recalculateUserProgress(user, drives) {
-  const completedDayHours = drives
-    .filter((drive) => !drive.isNightDrive)
-    .reduce((sum, drive) => sum + ((Number(drive.duration) || 0) / 60), 0);
-  const completedNightHours = drives
-    .filter((drive) => drive.isNightDrive)
-    .reduce((sum, drive) => sum + ((Number(drive.duration) || 0) / 60), 0);
+  const totals = sumDriveMinutes(drives);
 
   return {
     ...user,
-    completedDayHours,
-    completedNightHours,
+    completedDayHours: totals.dayMinutes / 60,
+    completedNightHours: totals.nightMinutes / 60,
   };
 }
 
@@ -92,6 +94,7 @@ const DEFAULT_DATA = {
     freezeDaysThisMonth: 0,
   },
   settings: {
+    nightDrivingMethod: 'civil_twilight',
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
     backupReminder: true,
@@ -112,14 +115,14 @@ const DEFAULT_DATA = {
   version: getAppVersion(),
 };
 
-function migrateData(data) {
+export function migrateData(data) {
   const drives = dedupeByIdentity(data.drives, (drive) => [
     drive.date,
     drive.startTime,
     drive.endTime,
     drive.duration,
     drive.destination,
-  ].filter(Boolean).join('|'));
+  ].filter(Boolean).join('|')).map(normalizeDriveNightFields);
   const supervisorProfiles = dedupeByIdentity(data.supervisorProfiles, (profile) => [
     profile.name,
     profile.dateOfBirth || profile.birthDate || profile.dob,
@@ -472,7 +475,10 @@ export async function exportDrivesAsCSV() {
       'Start Time',
       'End Time', 
       'Duration (minutes)',
-      'Night Drive',
+      'Day Minutes',
+      'Night Minutes',
+      'Night Calculation',
+      'Manually Adjusted',
       'Weather',
       'Skills Practiced',
       'Supervisor Name',
@@ -492,7 +498,10 @@ export async function exportDrivesAsCSV() {
       drive.startTime,
       drive.endTime,
       drive.duration,
-      drive.isNightDrive ? 'Yes' : 'No',
+      getDriveDayMinutes(drive),
+      getDriveNightMinutes(drive),
+      getNightCalculationLabel(drive.nightCalculation),
+      drive.nightCalculation?.manuallyAdjusted ? 'Yes' : 'No',
       drive.weather || '',
       drive.skills || '',
       drive.supervisorName || '',

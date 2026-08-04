@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { loadData, saveData, setCloudBackupEnabled as persistCloudBackupSetting } from '../utils/storage';
 import { logger, logError } from '../utils/logger';
 import { getAppVersion } from '../utils/appInfo';
+import { normalizeDriveNightFields, sumDriveMinutes } from '../utils/nightDriving';
 import { 
   calculateCurrentStreak, 
   calculateLongestStreak,
@@ -57,6 +58,7 @@ const initialState = {
     lastFreezeReset: null,
   },
   settings: {
+    nightDrivingMethod: 'civil_twilight',
     nightTimeStart: '18:00',
     nightTimeEnd: '06:00',
     backupReminder: true,
@@ -99,7 +101,8 @@ function drivingReducer(state, action) {
       };
 
     case ACTIONS.ADD_DRIVE:
-      const newDrives = [...state.drives, action.payload];
+      const normalizedDrive = normalizeDriveNightFields(action.payload);
+      const newDrives = [...state.drives, normalizedDrive];
       const updatedStreaks = {
         ...state.streaks,
         current: calculateCurrentStreak(newDrives),
@@ -107,7 +110,7 @@ function drivingReducer(state, action) {
           state.streaks.longest,
           calculateLongestStreak(newDrives)
         ),
-        lastDriveDate: action.payload.date,
+        lastDriveDate: normalizedDrive.date,
       };
       
       return {
@@ -116,25 +119,18 @@ function drivingReducer(state, action) {
         streaks: updatedStreaks,
         user: {
           ...state.user,
-          completedDayHours: state.user.completedDayHours + 
-            (action.payload.isNightDrive ? 0 : action.payload.duration / 60),
-          completedNightHours: state.user.completedNightHours + 
-            (action.payload.isNightDrive ? action.payload.duration / 60 : 0),
+          completedDayHours: state.user.completedDayHours + (normalizedDrive.dayMinutes / 60),
+          completedNightHours: state.user.completedNightHours + (normalizedDrive.nightMinutes / 60),
         },
       };
 
     case ACTIONS.UPDATE_DRIVE:
       const updatedDrives = state.drives.map(drive =>
-        drive.id === action.payload.id ? action.payload : drive
+        drive.id === action.payload.id ? normalizeDriveNightFields(action.payload) : drive
       );
       
       // Recalculate totals
-      const dayHours = updatedDrives
-        .filter(d => !d.isNightDrive)
-        .reduce((sum, d) => sum + d.duration / 60, 0);
-      const nightHours = updatedDrives
-        .filter(d => d.isNightDrive)
-        .reduce((sum, d) => sum + d.duration / 60, 0);
+      const updatedMinutes = sumDriveMinutes(updatedDrives);
       
       return {
         ...state,
@@ -146,8 +142,8 @@ function drivingReducer(state, action) {
         },
         user: {
           ...state.user,
-          completedDayHours: dayHours,
-          completedNightHours: nightHours,
+          completedDayHours: updatedMinutes.dayMinutes / 60,
+          completedNightHours: updatedMinutes.nightMinutes / 60,
         },
       };
 
@@ -155,12 +151,7 @@ function drivingReducer(state, action) {
       const filteredDrives = state.drives.filter(drive => drive.id !== action.payload);
       
       // Recalculate totals
-      const remainingDayHours = filteredDrives
-        .filter(d => !d.isNightDrive)
-        .reduce((sum, d) => sum + d.duration / 60, 0);
-      const remainingNightHours = filteredDrives
-        .filter(d => d.isNightDrive)
-        .reduce((sum, d) => sum + d.duration / 60, 0);
+      const remainingMinutes = sumDriveMinutes(filteredDrives);
       
       return {
         ...state,
@@ -172,8 +163,8 @@ function drivingReducer(state, action) {
         },
         user: {
           ...state.user,
-          completedDayHours: remainingDayHours,
-          completedNightHours: remainingNightHours,
+          completedDayHours: remainingMinutes.dayMinutes / 60,
+          completedNightHours: remainingMinutes.nightMinutes / 60,
         },
       };
 
