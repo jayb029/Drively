@@ -1,0 +1,221 @@
+name: Build and release production APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version (for example, 6.1.9)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-apk
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and release signed production APK
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Determine release versions
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Production releases must be run from the main branch."
+            exit 1
+          fi
+
+          if [[ ! "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must use the form 6.1.9."
+            exit 1
+          fi
+
+          TAG_NAME="v${VERSION_NAME}"
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists."
+            exit 1
+          fi
+
+          LATEST_RELEASE="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" 2>/dev/null || true)"
+          PREVIOUS_VERSION_CODE=""
+
+          if [[ -n "$LATEST_RELEASE" ]]; then
+            PREVIOUS_VERSION_CODE="$(
+              printf '%s' "$LATEST_RELEASE" |
+                jq -r '(.body // "") | try capture("drively-android-version-code:(?<code>[0-9]+)").code catch ""'
+            )"
+
+            if [[ -z "$PREVIOUS_VERSION_CODE" ]]; then
+              PREVIOUS_VERSION_CODE="$(
+                printf '%s' "$LATEST_RELEASE" |
+                  jq -r '.assets[]?.name' |
+                  sed -nE 's/^Drively-v[0-9]+\.[0-9]+\.[0-9]+-([0-9]+)\.apk$/\1/p' |
+                  head -n 1
+              )"
+            fi
+          fi
+
+          if [[ -z "$PREVIOUS_VERSION_CODE" ]]; then
+            PREVIOUS_VERSION_CODE=12
+          fi
+
+          VERSION_CODE=$((PREVIOUS_VERSION_CODE + 1))
+          if (( VERSION_CODE > 2100000000 )); then
+            echo "The next Android version code exceeds 2100000000."
+            exit 1
+          fi
+
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Building Drively $VERSION_NAME with Android version code $VERSION_CODE."
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply release version
+        env:
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          VERSION_CODE: ${{ steps.release.outputs.version_code }}
+        run: npm run version:set -- "$VERSION_NAME" "$VERSION_CODE"
+
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          DRIVELY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.DRIVELY_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -z "$DRIVELY_UPLOAD_KEYSTORE_BASE64" ]]; then
+            echo "DRIVELY_UPLOAD_KEYSTORE_BASE64 is not configured in the production environment."
+            exit 1
+          fi
+          printf '%s' "$DRIVELY_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/drively-upload.jks"
+          chmod 600 "$RUNNER_TEMP/drively-upload.jks"
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          NODE_ENV: production
+          DRIVELY_VERSION_CODE: ${{ steps.release.outputs.version_code }}
+          DRIVELY_UPLOAD_STORE_FILE: ${{ runner.temp }}/drively-upload.jks
+          DRIVELY_UPLOAD_STORE_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_STORE_PASSWORD }}
+          DRIVELY_UPLOAD_KEY_ALIAS: ${{ secrets.DRIVELY_UPLOAD_KEY_ALIAS }}
+          DRIVELY_UPLOAD_KEY_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Verify and name APK
+        id: apk
+        shell: bash
+        env:
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          DRIVELY_VERSION_CODE: ${{ steps.release.outputs.version_code }}
+        run: |
+          SOURCE_APK="android/app/build/outputs/apk/release/app-release.apk"
+          OUTPUT_APK="$RUNNER_TEMP/Drively-v${VERSION_NAME}-${DRIVELY_VERSION_CODE}.apk"
+
+          test -s "$SOURCE_APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$SOURCE_APK"
+          cp "$SOURCE_APK" "$OUTPUT_APK"
+          echo "path=$OUTPUT_APK" >> "$GITHUB_OUTPUT"
+          echo "filename=Drively-v${VERSION_NAME}-${DRIVELY_VERSION_CODE}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Commit release version
+        id: commit
+        shell: bash
+        env:
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          VERSION_CODE: ${{ steps.release.outputs.version_code }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            package.json \
+            package-lock.json \
+            app.json \
+            android/app/build.gradle \
+            android/app/src/main/res/values/strings.xml
+
+          if git diff --cached --quiet; then
+            echo "Version files already match this release; reusing the current commit."
+          else
+            git commit -m "Release Drively v${VERSION_NAME} (Version Code ${VERSION_CODE})"
+            git push origin HEAD:main
+          fi
+
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          VERSION_CODE: ${{ steps.release.outputs.version_code }}
+          RELEASE_COMMIT: ${{ steps.commit.outputs.sha }}
+          APK_PATH: ${{ steps.apk.outputs.path }}
+          APK_FILENAME: ${{ steps.apk.outputs.filename }}
+        run: |
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          printf '%s\n\n%s\n\n%s\n' \
+            "Signed production APK for Drively v${VERSION_NAME}." \
+            "Android version code: ${VERSION_CODE}" \
+            "<!-- drively-android-version-code:${VERSION_CODE} -->" \
+            > "$NOTES_FILE"
+
+          PREVIOUS_TAG="$(
+            git describe \
+              --tags \
+              --abbrev=0 \
+              --match 'v[0-9]*' \
+              "$RELEASE_COMMIT" \
+              2>/dev/null || true
+          )"
+
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            {
+              printf '\n## Changes since %s\n\n' "$PREVIOUS_TAG"
+              git log \
+                --pretty=format:'- %s (`%h`)' \
+                "$PREVIOUS_TAG..$RELEASE_COMMIT"
+              printf '\n'
+            } >> "$NOTES_FILE"
+          fi
+
+          gh release create "$TAG_NAME" \
+            "$APK_PATH#$APK_FILENAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_COMMIT" \
+            --title "Drively v${VERSION_NAME}" \
+            --notes-file "$NOTES_FILE" \
+            --draft
+
+          gh release edit "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false

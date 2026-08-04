@@ -2,9 +2,15 @@ const fs = require('fs');
 const path = require('path');
 
 const version = process.argv[2];
+const versionCode = process.argv[3];
 
 if (!version) {
-  console.error('Usage: npm run version:set -- <version>');
+  console.error('Usage: npm run version:set -- <version> [android-version-code]');
+  process.exit(1);
+}
+
+if (versionCode && (!/^[1-9]\d*$/.test(versionCode) || Number(versionCode) > 2100000000)) {
+  console.error('Android version code must be a positive whole number no greater than 2100000000');
   process.exit(1);
 }
 
@@ -48,10 +54,18 @@ replaceInFile(
   `versionName "${version}"`
 );
 
+if (versionCode) {
+  replaceInFile(
+    'android/app/build.gradle',
+    /versionCode drivelyVersionCode \? drivelyVersionCode\.toInteger\(\) : \d+/,
+    `versionCode drivelyVersionCode ? drivelyVersionCode.toInteger() : ${versionCode}`
+  );
+}
+
 replaceInFile(
   'android/app/src/main/res/values/strings.xml',
   /<string name="expo_runtime_version">[^<]+<\/string>/,
   `<string name="expo_runtime_version">${version}</string>`
 );
 
-console.log(`Updated Drively version to ${version}`);
+console.log(`Updated Drively version to ${version}${versionCode ? ` (Android version code ${versionCode})` : ''}`);

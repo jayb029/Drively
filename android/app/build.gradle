@@ -3,6 +3,7 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def drivelyVersionCode = findProperty('DRIVELY_VERSION_CODE') ?: System.getenv('DRIVELY_VERSION_CODE')
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -91,7 +92,7 @@ android {
         applicationId 'com.jaysapps.drively'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
+        versionCode drivelyVersionCode ? drivelyVersionCode.toInteger() : 2
         versionName "2.1"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
