@@ -34,6 +34,7 @@ export default function DriveHistoryScreen({ navigation }) {
   const [sortBy, setSortBy] = useState('date');
   const [showFilters, setShowFilters] = useState(false);
   const [showOlderDetections, setShowOlderDetections] = useState(false);
+  const [expandedDriveId, setExpandedDriveId] = useState(null);
   const distanceUnit = settings.distanceUnit || 'metric';
   const pendingDetectedEvents = useMemo(() => (detectedEvents || [])
     .filter((event) => event.status === 'new' || event.status === 'opened')
@@ -78,16 +79,22 @@ export default function DriveHistoryScreen({ navigation }) {
     ]);
   };
 
-  const renderDrive = ({ item: drive, index }) => (
-    <View style={[styles.driveRow, index < processedDrives.length - 1 && styles.driveRowBorder]}>
-      <View style={styles.typeLine}>
+  const renderDrive = ({ item: drive, index }) => {
+    const groupedSegments = Array.isArray(drive.segments) && drive.segments.length > 1
+      ? drive.segments
+      : [];
+    const isExpanded = expandedDriveId === drive.id;
+
+    return (
+      <View style={[styles.driveRow, index < processedDrives.length - 1 && styles.driveRowBorder]}>
+        <View style={styles.typeLine}>
         <Icon
           name={drive.isNightDrive ? 'weather-night' : 'white-balance-sunny'}
           size={17}
           color={drive.isNightDrive ? theme.colors.secondary : theme.colors.primary}
         />
-      </View>
-      <View style={styles.driveCopy}>
+        </View>
+        <View style={styles.driveCopy}>
         <View style={styles.driveTopLine}>
           <Text style={styles.driveDate}>{formatDateForDisplay(drive.date)}</Text>
           <Text style={styles.driveDuration}>{formatDuration(drive.duration)}</Text>
@@ -112,18 +119,57 @@ export default function DriveHistoryScreen({ navigation }) {
             {' · '}avg {formatSpeedFromKmh(drive.routeSummary.averageSpeedKmh, distanceUnit)}
           </Text>
         )}
+        {groupedSegments.length > 0 && (
+          <View style={styles.segmentGroup}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ expanded: isExpanded }}
+              onPress={() => setExpandedDriveId(isExpanded ? null : drive.id)}
+              style={styles.segmentGroupButton}
+            >
+              <Icon name="source-branch" size={16} color={theme.colors.primary} />
+              <Text style={styles.segmentGroupLabel}>{groupedSegments.length} grouped segments</Text>
+              <Icon
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={17}
+                color={theme.colors.text.secondary}
+              />
+            </TouchableOpacity>
+            {isExpanded && (
+              <View style={styles.segmentList}>
+                {groupedSegments.map((segment, segmentIndex) => (
+                  <View key={segment.id || `${drive.id}-${segmentIndex}`} style={styles.segmentRow}>
+                    <Text style={styles.segmentNumber}>{segmentIndex + 1}</Text>
+                    <View style={styles.segmentCopy}>
+                      <Text style={styles.segmentTime}>
+                        {formatTimeForDisplay(segment.startTime)}–{formatTimeForDisplay(segment.endTime)}
+                      </Text>
+                      <Text style={styles.segmentMeta}>
+                        {formatSegmentDuration(segment.durationMinutes)}
+                        {segment.routeSummary
+                          ? ` · ${formatDistanceFromKm(segment.routeSummary.distanceKm, distanceUnit)}`
+                          : ''}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
         {!!drive.skills && <Text numberOfLines={1} style={styles.driveDetail}>{drive.skills}</Text>}
+        </View>
+        <TouchableOpacity
+          accessibilityLabel={`Delete drive from ${formatDateForDisplay(drive.date)}`}
+          accessibilityRole="button"
+          onPress={() => confirmDeleteDrive(drive)}
+          style={styles.deleteButton}
+        >
+          <Icon name="trash-can-outline" size={18} color={theme.colors.error} />
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        accessibilityLabel={`Delete drive from ${formatDateForDisplay(drive.date)}`}
-        accessibilityRole="button"
-        onPress={() => confirmDeleteDrive(drive)}
-        style={styles.deleteButton}
-      >
-        <Icon name="trash-can-outline" size={18} color={theme.colors.error} />
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   const listHeader = (
     <View style={styles.listHeader}>
@@ -259,6 +305,11 @@ function SummaryValue({ label, styles, value }) {
       <Text style={styles.summaryLabel}>{label}</Text>
     </View>
   );
+}
+
+function formatSegmentDuration(durationMinutes) {
+  const minutes = Number(durationMinutes) || 0;
+  return minutes < 1 ? '<1 min' : formatDuration(Math.round(minutes));
 }
 
 function SegmentedControl({ onChange, options, styles, value }) {
@@ -549,6 +600,57 @@ function createStyles(theme) {
     driveDetail: {
       color: theme.colors.text.secondary,
       fontSize: 11,
+    },
+    segmentGroup: {
+      marginTop: 4,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border.light,
+    },
+    segmentGroupButton: {
+      minHeight: 38,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    segmentGroupLabel: {
+      flex: 1,
+      color: theme.colors.primary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    segmentList: {
+      paddingBottom: 5,
+    },
+    segmentRow: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 9,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border.light,
+    },
+    segmentNumber: {
+      width: 20,
+      color: theme.colors.text.light,
+      fontFamily: theme.typography.families.utility,
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    segmentCopy: {
+      flex: 1,
+    },
+    segmentTime: {
+      color: theme.colors.text.primary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    segmentMeta: {
+      color: theme.colors.text.secondary,
+      fontSize: 11,
+      marginTop: 1,
     },
     deleteButton: {
       width: 36,

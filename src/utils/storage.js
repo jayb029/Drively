@@ -482,6 +482,7 @@ export async function exportDrivesAsCSV() {
       'Destination',
       `Distance (${getDistanceUnitLabel(distanceUnit)})`,
       `Average Speed (${getSpeedUnitLabel(distanceUnit)})`,
+      'Segments',
       'Detection Source'
     ];
     
@@ -501,6 +502,7 @@ export async function exportDrivesAsCSV() {
       drive.destination || '',
       drive.routeSummary?.distanceKm ? Number((drive.routeSummary.distanceKm * distanceMultiplier).toFixed(2)) : '',
       drive.routeSummary?.averageSpeedKmh ? Math.round(drive.routeSummary.averageSpeedKmh * distanceMultiplier) : '',
+      Array.isArray(drive.segments) && drive.segments.length > 1 ? drive.segments.length : 1,
       drive.source || 'manual'
     ]);
     

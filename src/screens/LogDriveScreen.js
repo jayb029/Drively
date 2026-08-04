@@ -45,7 +45,9 @@ import {
 import {
   addActiveDriveTrackingListener,
   clearActiveDriveTracking,
+  pauseActiveDriveTracking,
   requestActiveDriveTrackingPermissions,
+  resumeActiveDriveTracking,
   startActiveDriveTracking,
   stopActiveDriveTracking,
 } from '../services/activeDriveTracking';
@@ -146,7 +148,11 @@ export default function LogDriveScreen({ navigation }) {
   const [startTimestamp, setStartTimestamp] = useState(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isActive, setIsActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isChangingTrackingState, setIsChangingTrackingState] = useState(false);
+  const [segmentCount, setSegmentCount] = useState(1);
+  const [trackedSegments, setTrackedSegments] = useState([]);
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisorProfiles[0]?.id || null);
   const [supervisorName, setSupervisorName] = useState('');
@@ -187,30 +193,30 @@ export default function LogDriveScreen({ navigation }) {
 
   useEffect(() => {
     let interval;
-    if (isActive && startTimestamp) {
+    if (isActive && !isPaused) {
       interval = setInterval(() => {
-        setElapsedMs(Date.now() - startTimestamp);
+        setElapsedMs((value) => value + 1000);
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isActive, startTimestamp]);
+  }, [isActive, isPaused]);
 
   useEffect(() => {
-    setDrivePipTrackingActive(isActive);
+    setDrivePipTrackingActive(isActive && !isPaused);
     return () => setDrivePipTrackingActive(false);
-  }, [isActive]);
+  }, [isActive, isPaused]);
 
   useEffect(() => {
-    if (!isActive || !isInPictureInPictureMode) return;
+    if (!isActive || isPaused || !isInPictureInPictureMode) return;
 
     updateDrivePipStats({
       title: formatElapsed(elapsedMs),
       subtitle: `${formatDistanceFromKm(distance / 1000, distanceUnit)} · ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`,
-      startTimestamp,
+      startTimestamp: Date.now() - elapsedMs,
       distanceText: formatDistanceFromKm(distance / 1000, distanceUnit),
       speedText: formatSpeedFromKmh(currentSpeed, distanceUnit),
     });
-  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive, isInPictureInPictureMode, startTimestamp]);
+  }, [currentSpeed, distance, distanceUnit, elapsedMs, isActive, isInPictureInPictureMode, isPaused]);
 
   useEffect(() => {
     const subscription = addActiveDriveTrackingListener((event) => {
@@ -220,6 +226,9 @@ export default function LogDriveScreen({ navigation }) {
       setMaxSpeed(event.maxSpeed);
       setRoutePoints(event.routePoints || []);
       lastPointRef.current = event.lastPoint || null;
+      setIsPaused(!!event.paused);
+      setSegmentCount(Math.max(1, event.segmentCount || 1));
+      setTrackedSegments(event.segments || []);
     });
 
     return () => subscription.remove();
@@ -267,7 +276,7 @@ export default function LogDriveScreen({ navigation }) {
       }
     };
 
-    if (!isActive || !alwaysOnWhileTracking) {
+    if (!isActive || isPaused || !alwaysOnWhileTracking) {
       stopKeepingAwake();
       return undefined;
     }
@@ -292,7 +301,7 @@ export default function LogDriveScreen({ navigation }) {
       cancelled = true;
       stopKeepingAwake();
     };
-  }, [alwaysOnWhileTracking, isActive]);
+  }, [alwaysOnWhileTracking, isActive, isPaused]);
 
   const loadWeather = async () => {
     if (!(settings.weatherEnabled ?? true)) return;
@@ -395,6 +404,9 @@ export default function LogDriveScreen({ navigation }) {
     setCurrentSpeed(0);
     setMaxSpeed(0);
     setRoutePoints([]);
+    setTrackedSegments([]);
+    setSegmentCount(1);
+    setIsPaused(false);
     lastPointRef.current = null;
     try {
       await startActiveDriveTracking({
@@ -430,6 +442,9 @@ export default function LogDriveScreen({ navigation }) {
     setSkills([]);
     setSourceEventId(null);
     setIsActive(false);
+    setIsPaused(false);
+    setSegmentCount(1);
+    setTrackedSegments([]);
     setDrivePipTrackingActive(false);
     clearActiveDriveTracking();
     setSupervisorDateOfBirth('');
@@ -442,6 +457,7 @@ export default function LogDriveScreen({ navigation }) {
     finalEndTime,
     finalMaxSpeed,
     finalRoutePoints,
+    finalSegments,
   }) => {
     const supervisor = selectedSupervisor || {
       name: supervisorName.trim(),
@@ -451,12 +467,40 @@ export default function LogDriveScreen({ navigation }) {
     };
     const supervisorAge = getSupervisorAge(supervisor);
     const duration = Math.max(1, Math.round(finalElapsedMs / 60000));
-    const isNightDrive =
-      isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
-      isNightTime(finalEndTime, settings.nightTimeStart, settings.nightTimeEnd);
+    const driveId = Date.now().toString();
+    const segments = (finalSegments || []).map((segment, index) => {
+      const segmentDurationMs = Math.max(0, segment.endTimestamp - segment.startTimestamp);
+      const segmentDurationHours = Math.max(segmentDurationMs / 3600000, 0.0001);
+      const segmentDistanceKm = (segment.distance || 0) / 1000;
+      const segmentStartTime = getTimeFromDate(segment.startTimestamp);
+      const segmentEndTime = getTimeFromDate(segment.endTimestamp);
+
+      return {
+        id: `${driveId}-segment-${index + 1}`,
+        startTimestamp: segment.startTimestamp,
+        endTimestamp: segment.endTimestamp,
+        startTime: segmentStartTime,
+        endTime: segmentEndTime,
+        durationMinutes: Number((segmentDurationMs / 60000).toFixed(2)),
+        isNightDrive:
+          isNightTime(segmentStartTime, settings.nightTimeStart, settings.nightTimeEnd) ||
+          isNightTime(segmentEndTime, settings.nightTimeStart, settings.nightTimeEnd),
+        routeSummary: {
+          distanceKm: Number(segmentDistanceKm.toFixed(2)),
+          averageSpeedKmh: Number((segmentDistanceKm / segmentDurationHours).toFixed(1)),
+          maxSpeedKmh: Math.round(segment.maxSpeed || 0),
+          samples: segment.routePoints?.length || 0,
+        },
+        routePreview: (segment.routePoints || []).filter((_, pointIndex) => pointIndex % 5 === 0).slice(-40),
+      };
+    });
+    const isNightDrive = segments.length
+      ? segments.some((segment) => segment.isNightDrive)
+      : isNightTime(startTime, settings.nightTimeStart, settings.nightTimeEnd) ||
+        isNightTime(finalEndTime, settings.nightTimeStart, settings.nightTimeEnd);
 
     addDrive({
-      id: Date.now().toString(),
+      id: driveId,
       date,
       startTime,
       endTime: finalEndTime,
@@ -474,11 +518,12 @@ export default function LogDriveScreen({ navigation }) {
       source: sourceEventId ? 'detected' : 'manual',
       routeSummary: {
         distanceKm: Number((finalDistance / 1000).toFixed(2)),
-        averageSpeedKmh: Number(((finalDistance / 1000) / Math.max(duration / 60, 0.016)).toFixed(1)),
+        averageSpeedKmh: Number(((finalDistance / 1000) / Math.max(finalElapsedMs / 3600000, 0.0001)).toFixed(1)),
         maxSpeedKmh: Math.round(finalMaxSpeed),
         samples: finalRoutePoints.length,
       },
       routePreview: finalRoutePoints.filter((_, index) => index % 5 === 0).slice(-40),
+      segments,
     });
 
     if (sourceEventId) {
@@ -487,16 +532,20 @@ export default function LogDriveScreen({ navigation }) {
   };
 
   const finishDrive = async (shouldSave) => {
-    if (isStopping) return;
+    if (isStopping || isChangingTrackingState) return;
 
     setIsStopping(true);
     try {
       const state = await stopActiveDriveTracking();
-      const finalEndTime = getCurrentTime();
-      const finalElapsedMs = Date.now() - startTimestamp;
+      const lastSegment = state?.segments?.[state.segments.length - 1];
+      const finalEndTime = lastSegment?.endTimestamp
+        ? getTimeFromDate(lastSegment.endTimestamp)
+        : getCurrentTime();
+      const finalElapsedMs = state?.elapsedMs ?? elapsedMs;
       const finalDistance = state?.distance ?? distance;
       const finalMaxSpeed = state?.maxSpeed ?? maxSpeed;
       const finalRoutePoints = state?.routePoints ?? routePoints;
+      const finalSegments = state?.segments ?? trackedSegments;
 
       logUserAction('stop_drive', 'LOG_DRIVE');
 
@@ -507,6 +556,7 @@ export default function LogDriveScreen({ navigation }) {
           finalEndTime,
           finalMaxSpeed,
           finalRoutePoints,
+          finalSegments,
         });
         logUserAction('save_drive', 'LOG_DRIVE');
       } else {
@@ -533,6 +583,36 @@ export default function LogDriveScreen({ navigation }) {
     }
   };
 
+  const pauseDrive = async () => {
+    if (isStopping || isChangingTrackingState || isPaused) return;
+
+    setIsChangingTrackingState(true);
+    try {
+      await pauseActiveDriveTracking();
+      logUserAction('pause_drive', 'LOG_DRIVE');
+    } catch (error) {
+      logError(error, 'TRACKING', 'Unable to pause live drive tracking');
+      Alert.alert('Could not pause drive', 'Tracking is still active. Try again.');
+    } finally {
+      setIsChangingTrackingState(false);
+    }
+  };
+
+  const resumeDrive = async () => {
+    if (isStopping || isChangingTrackingState || !isPaused) return;
+
+    setIsChangingTrackingState(true);
+    try {
+      await resumeActiveDriveTracking();
+      logUserAction('resume_drive', 'LOG_DRIVE');
+    } catch (error) {
+      logError(error, 'TRACKING', 'Unable to resume live drive tracking');
+      Alert.alert('Could not resume drive', 'Location tracking could not restart. Check location settings and try again.');
+    } finally {
+      setIsChangingTrackingState(false);
+    }
+  };
+
   const confirmDiscardDrive = () => {
     Alert.alert(
       'Discard this drive?',
@@ -546,11 +626,15 @@ export default function LogDriveScreen({ navigation }) {
   };
 
   const confirmEndDrive = () => {
-    if (isStopping) return;
+    if (isStopping || isChangingTrackingState) return;
 
     Alert.alert(
       'End this drive?',
-      'Save it to your log, or end it without saving. Tracking continues until you choose.',
+      segmentCount > 1
+        ? `Save all ${segmentCount} segments as one grouped logbook entry, or end without saving.`
+        : isPaused
+          ? 'Save this paused drive to your log, or end it without saving.'
+          : 'Save it to your log, or end it without saving. Tracking continues until you choose.',
       [
         { text: 'Keep driving', style: 'cancel' },
         { text: 'End without saving', style: 'destructive', onPress: confirmDiscardDrive },
@@ -604,7 +688,7 @@ export default function LogDriveScreen({ navigation }) {
     });
   };
 
-  if (isInPictureInPictureMode && isActive) {
+  if (isInPictureInPictureMode && isActive && !isPaused) {
     return (
       <View style={styles.pipContainer}>
         <View style={styles.pipHeader}>
@@ -631,28 +715,39 @@ export default function LogDriveScreen({ navigation }) {
     const displaySpeed = distanceUnit === 'imperial'
       ? currentSpeed * 0.621371
       : currentSpeed;
+    const isBusy = isStopping || isChangingTrackingState;
 
     return (
-      <SafeAreaView style={styles.activeContainer}>
+      <SafeAreaView style={[styles.activeContainer, isPaused && styles.pausedContainer]}>
         <View style={styles.activeContent}>
           <View style={styles.activeHeader}>
             <View style={styles.activeStatus}>
-              <Icon name="car-clock" size={22} color="#E9C79F" />
+              <Icon name={isPaused ? 'pause-circle-outline' : 'car-clock'} size={22} color="#E9C79F" />
               <View>
-                <Text style={styles.activeTitle}>Drive in progress</Text>
+                <Text style={styles.activeTitle}>{isPaused ? 'Drive paused' : 'Drive in progress'}</Text>
                 <Text style={styles.activeStarted}>
-                  Started {formatTimeForDisplay(startTime)}
+                  Started {formatTimeForDisplay(startTime)} · Segment {segmentCount}
                 </Text>
               </View>
             </View>
             <Text style={styles.activeElapsed}>{formatElapsed(elapsedMs)}</Text>
           </View>
 
-          <View style={styles.speedReadout} accessible accessibilityLabel={`Current speed ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`}>
-            <Text style={styles.speedLabel}>Current speed</Text>
-            <Text style={styles.speedValue}>{Math.round(displaySpeed)}</Text>
-            <Text style={styles.speedUnit}>{getSpeedUnitLabel(distanceUnit)}</Text>
-          </View>
+          {isPaused ? (
+            <View style={styles.pausedReadout} accessible accessibilityLabel={`Drive paused after ${segmentCount} segments`}>
+              <Icon name="pause" size={54} color="#E9C79F" />
+              <Text style={styles.pausedReadoutTitle}>Paused</Text>
+              <Text style={styles.pausedReadoutBody}>
+                Resume to begin segment {segmentCount + 1}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.speedReadout} accessible accessibilityLabel={`Current speed ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`}>
+              <Text style={styles.speedLabel}>Current speed</Text>
+              <Text style={styles.speedValue}>{Math.round(displaySpeed)}</Text>
+              <Text style={styles.speedUnit}>{getSpeedUnitLabel(distanceUnit)}</Text>
+            </View>
+          )}
 
           <View style={styles.activeMetrics}>
             <ActiveMetric
@@ -671,21 +766,52 @@ export default function LogDriveScreen({ navigation }) {
           </View>
 
           <View style={styles.activeFooter}>
+            {isPaused ? (
+              <TouchableOpacity
+                style={[styles.resumeDriveButton, isBusy && styles.endDriveButtonDisabled]}
+                onPress={resumeDrive}
+                disabled={isBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Resume drive and start a new segment"
+              >
+                {isChangingTrackingState ? (
+                  <ActivityIndicator color="#F2F3EE" />
+                ) : (
+                  <Icon name="play" size={24} color="#F2F3EE" />
+                )}
+                <Text style={styles.endDriveButtonText}>{isChangingTrackingState ? 'Resuming' : 'Resume drive'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.pauseDriveButton, isBusy && styles.endDriveButtonDisabled]}
+                onPress={pauseDrive}
+                disabled={isBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Pause drive and finish this segment"
+              >
+                {isChangingTrackingState ? (
+                  <ActivityIndicator color="#151815" />
+                ) : (
+                  <Icon name="pause" size={24} color="#151815" />
+                )}
+                <Text style={styles.pauseDriveButtonText}>{isChangingTrackingState ? 'Pausing' : 'Pause drive'}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={[styles.endDriveButton, isStopping && styles.endDriveButtonDisabled]}
+              style={[styles.endDriveSecondaryButton, isBusy && styles.endDriveButtonDisabled]}
               onPress={confirmEndDrive}
-              disabled={isStopping}
+              disabled={isBusy}
               accessibilityRole="button"
               accessibilityLabel="End drive"
             >
-              {isStopping ? (
-                <ActivityIndicator color="#F2F3EE" />
-              ) : (
-                <Icon name="stop" size={24} color="#F2F3EE" />
-              )}
-              <Text style={styles.endDriveButtonText}>{isStopping ? 'Ending drive' : 'End drive'}</Text>
+              {isStopping ? <ActivityIndicator color="#E78A7F" /> : <Icon name="stop" size={20} color="#E78A7F" />}
+              <Text style={styles.endDriveSecondaryText}>{isStopping ? 'Ending drive' : 'End drive'}</Text>
             </TouchableOpacity>
-            <Text style={styles.activeFooterText}>Choose whether to save when you end the drive.</Text>
+            <Text style={styles.activeFooterText}>
+              {segmentCount > 1
+                ? `${segmentCount} segments will be saved together.`
+                : 'Pausing ends this segment without ending the grouped drive.'}
+            </Text>
           </View>
         </View>
       </SafeAreaView>
@@ -913,6 +1039,9 @@ function createStyles(theme) {
       flex: 1,
       backgroundColor: '#151815',
     },
+    pausedContainer: {
+      backgroundColor: '#1D1C18',
+    },
     activeContent: {
       flex: 1,
       paddingHorizontal: 24,
@@ -977,6 +1106,26 @@ function createStyles(theme) {
       fontWeight: '700',
       marginTop: -8,
     },
+    pausedReadout: {
+      flex: 1,
+      minHeight: 210,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 24,
+    },
+    pausedReadoutTitle: {
+      color: '#F2F3EE',
+      fontFamily: theme.typography.families.display,
+      fontSize: 42,
+      fontWeight: '800',
+      marginTop: 4,
+    },
+    pausedReadoutBody: {
+      color: '#B3B9B1',
+      fontSize: 14,
+      fontWeight: '600',
+      marginTop: 6,
+    },
     activeMetrics: {
       minHeight: 112,
       flexDirection: 'row',
@@ -1011,14 +1160,43 @@ function createStyles(theme) {
     activeFooter: {
       gap: 9,
     },
-    endDriveButton: {
+    pauseDriveButton: {
       minHeight: 64,
       borderRadius: 8,
-      backgroundColor: '#9A3E34',
+      backgroundColor: '#E9C79F',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 10,
+    },
+    pauseDriveButtonText: {
+      color: '#151815',
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    resumeDriveButton: {
+      minHeight: 64,
+      borderRadius: 8,
+      backgroundColor: '#55745D',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    endDriveSecondaryButton: {
+      minHeight: 50,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#6B3B35',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    endDriveSecondaryText: {
+      color: '#E78A7F',
+      fontSize: 15,
+      fontWeight: '700',
     },
     endDriveButtonDisabled: {
       opacity: 0.65,

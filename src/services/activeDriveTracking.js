@@ -11,6 +11,20 @@ const ACTIVE_DRIVE_STATE_KEY = 'drively.activeDrive.state.v1';
 const ACTIVE_DRIVE_EVENT = 'DrivelyActiveDriveLocation';
 const TRACKING_PERSIST_INTERVAL_MS = 15000;
 
+const ACTIVE_DRIVE_LOCATION_OPTIONS = {
+  accuracy: Location.Accuracy.BestForNavigation,
+  activityType: Location.ActivityType.AutomotiveNavigation,
+  timeInterval: 5000,
+  distanceInterval: 10,
+  pausesUpdatesAutomatically: false,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: {
+    notificationTitle: 'Drively drive tracking is active',
+    notificationBody: 'Tracking distance and speed for your current drive.',
+    notificationColor: '#0f766e',
+  },
+};
+
 let trackingStateCache = null;
 let trackingStateWriteQueue = Promise.resolve();
 let lastTrackingPersistedAt = 0;
@@ -35,6 +49,48 @@ function formatElapsed(ms) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function createTrackingSegment(startTimestamp) {
+  return {
+    startTimestamp,
+    distance: 0,
+    currentSpeed: 0,
+    maxSpeed: 0,
+    routePoints: [],
+    lastPoint: null,
+  };
+}
+
+function getSegmentElapsedMs(segment, now = Date.now()) {
+  if (!segment?.startTimestamp) return 0;
+  return Math.max(0, (segment.endTimestamp || now) - segment.startTimestamp);
+}
+
+function getTrackedElapsedMs(state, now = Date.now()) {
+  const completedElapsedMs = (state.segments || [])
+    .reduce((total, segment) => total + getSegmentElapsedMs(segment, now), 0);
+  return completedElapsedMs + (state.currentSegment
+    ? getSegmentElapsedMs(state.currentSegment, now)
+    : 0);
+}
+
+function finalizeCurrentSegment(state, endTimestamp = Date.now()) {
+  if (!state.currentSegment) return state;
+
+  const completedSegment = {
+    ...state.currentSegment,
+    endTimestamp: Math.max(endTimestamp, state.currentSegment.startTimestamp),
+    currentSpeed: 0,
+  };
+
+  return {
+    ...state,
+    segments: [...(state.segments || []), completedSegment],
+    currentSegment: null,
+    lastPoint: null,
+    currentSpeed: 0,
+  };
 }
 
 function toPoint(location) {
@@ -89,14 +145,16 @@ async function setTrackingState(nextState, { force = false } = {}) {
 
 function publishTrackingUpdate(state) {
   const distanceUnit = state.distanceUnit || 'metric';
-  const elapsedMs = Date.now() - state.startTimestamp;
+  const elapsedMs = getTrackedElapsedMs(state);
   const distanceText = formatDistanceFromKm((state.distance || 0) / 1000, distanceUnit);
-  const speedText = formatSpeedFromKmh(state.currentSpeed || 0, distanceUnit);
+  const speedText = state.paused
+    ? 'Paused'
+    : formatSpeedFromKmh(state.currentSpeed || 0, distanceUnit);
 
   updateDrivePipStats({
-    title: formatElapsed(elapsedMs),
+    title: state.paused ? `Paused · ${formatElapsed(elapsedMs)}` : formatElapsed(elapsedMs),
     subtitle: `${distanceText} · ${speedText}`,
-    startTimestamp: state.startTimestamp,
+    startTimestamp: state.paused ? 0 : Date.now() - elapsedMs,
     distanceText,
     speedText,
   });
@@ -109,6 +167,9 @@ function publishTrackingUpdate(state) {
     maxSpeed: state.maxSpeed || 0,
     routePoints: state.routePoints || [],
     lastPoint: state.lastPoint || null,
+    paused: !!state.paused,
+    segmentCount: (state.segments || []).length + (state.currentSegment ? 1 : 0),
+    segments: state.segments || [],
   });
 }
 
@@ -116,13 +177,14 @@ async function handleLocationBatch(locations) {
   if (!Array.isArray(locations) || locations.length === 0) return;
 
   const initialState = await getTrackingState();
-  if (!initialState?.active) return;
+  if (!initialState?.active || initialState.paused || !initialState.currentSegment) return;
 
   let state = initialState;
 
   for (const location of locations) {
     const point = toPoint(location);
-    const previous = state.lastPoint;
+    const currentSegment = state.currentSegment;
+    const previous = currentSegment.lastPoint;
     const speedKmh = getSpeedKmh(point, previous);
     let nextDistance = state.distance || 0;
 
@@ -140,6 +202,14 @@ async function handleLocationBatch(locations) {
       maxSpeed: Math.max(state.maxSpeed || 0, speedKmh),
       lastPoint: point,
       routePoints: [...(state.routePoints || []).slice(-199), point],
+      currentSegment: {
+        ...currentSegment,
+        distance: (currentSegment.distance || 0) + (nextDistance - (state.distance || 0)),
+        currentSpeed: Math.max(0, speedKmh),
+        maxSpeed: Math.max(currentSegment.maxSpeed || 0, speedKmh),
+        lastPoint: point,
+        routePoints: [...(currentSegment.routePoints || []).slice(-199), point],
+      },
     };
   }
 
@@ -195,25 +265,63 @@ export async function startActiveDriveTracking({ startTimestamp, distanceUnit })
     maxSpeed: 0,
     routePoints: [],
     lastPoint: null,
+    paused: false,
+    segments: [],
+    currentSegment: createTrackingSegment(startTimestamp),
   };
   await setTrackingState(initialState, { force: true });
   publishTrackingUpdate(initialState);
 
-  await Location.startLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK, {
-    accuracy: Location.Accuracy.BestForNavigation,
-    activityType: Location.ActivityType.AutomotiveNavigation,
-    timeInterval: 5000,
-    distanceInterval: 10,
-    pausesUpdatesAutomatically: false,
-    showsBackgroundLocationIndicator: false,
-    foregroundService: {
-      notificationTitle: 'Drively drive tracking is active',
-      notificationBody: 'Tracking distance and speed for your current drive.',
-      notificationColor: '#0f766e',
-    },
-  });
+  await Location.startLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK, ACTIVE_DRIVE_LOCATION_OPTIONS);
 
   return true;
+}
+
+export async function pauseActiveDriveTracking() {
+  const state = await getTrackingState();
+  if (!state?.active || state.paused) return state;
+
+  if (await isActiveDriveTrackingRunning()) {
+    await Location.stopLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK);
+  }
+
+  const nextState = {
+    ...finalizeCurrentSegment(state),
+    paused: true,
+  };
+  await setTrackingState(nextState, { force: true });
+  publishTrackingUpdate(nextState);
+  return nextState;
+}
+
+export async function resumeActiveDriveTracking() {
+  const state = await getTrackingState();
+  if (!state?.active || !state.paused) return state;
+
+  const nextState = {
+    ...state,
+    paused: false,
+    currentSpeed: 0,
+    lastPoint: null,
+    currentSegment: createTrackingSegment(Date.now()),
+  };
+  await setTrackingState(nextState, { force: true });
+  publishTrackingUpdate(nextState);
+
+  try {
+    await Location.startLocationUpdatesAsync(ACTIVE_DRIVE_TRACKING_TASK, ACTIVE_DRIVE_LOCATION_OPTIONS);
+  } catch (error) {
+    const pausedState = {
+      ...nextState,
+      paused: true,
+      currentSegment: null,
+    };
+    await setTrackingState(pausedState, { force: true });
+    publishTrackingUpdate(pausedState);
+    throw error;
+  }
+
+  return nextState;
 }
 
 export async function stopActiveDriveTracking() {
@@ -225,7 +333,14 @@ export async function stopActiveDriveTracking() {
   }
 
   if (state) {
-    const nextState = { ...state, active: false };
+    const finalizedState = state.paused ? state : finalizeCurrentSegment(state);
+    const nextState = {
+      ...finalizedState,
+      active: false,
+      paused: false,
+      currentSpeed: 0,
+      elapsedMs: getTrackedElapsedMs(finalizedState),
+    };
     await setTrackingState(nextState, { force: true });
     publishTrackingUpdate(nextState);
     return nextState;

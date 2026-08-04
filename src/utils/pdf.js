@@ -134,7 +134,8 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
   
   let drivesHTML = '';
   drives.forEach((drive, index) => {
-    const duration = `${Math.floor(drive.duration / 60)}h ${drive.duration % 60}m`;
+    const segmentCount = Array.isArray(drive.segments) ? drive.segments.length : 0;
+    const duration = `${Math.floor(drive.duration / 60)}h ${drive.duration % 60}m${segmentCount > 1 ? ` (${segmentCount} segments)` : ''}`;
     const type = drive.isNightDrive ? 'Night' : 'Day';
     const supervisor = drive.supervisorName || '';
     

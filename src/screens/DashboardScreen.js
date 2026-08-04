@@ -148,6 +148,7 @@ export default function DashboardScreen({ navigation }) {
                       {drive.routeSummary?.distanceKm
                         ? ` · ${formatDistanceFromKm(drive.routeSummary.distanceKm, distanceUnit)}`
                         : ''}
+                      {drive.segments?.length > 1 ? ` · ${drive.segments.length} segments` : ''}
                     </Text>
                   </View>
                 </View>
