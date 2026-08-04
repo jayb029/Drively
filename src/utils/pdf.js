@@ -59,6 +59,40 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
       : numericValue.toFixed(1);
   };
 
+  const formatDriveDuration = (durationMinutes) => {
+    const totalMinutes = Math.max(0, Math.round(Number(durationMinutes) || 0));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours > 0 && minutes > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+
+    if (hours > 0) {
+      return `${hours}h`;
+    }
+
+    return `${minutes} min`;
+  };
+
+  const formatSegmentDuration = (durationMinutes) => {
+    const numericMinutes = Math.max(0, Number(durationMinutes) || 0);
+    return numericMinutes > 0 && numericMinutes < 1
+      ? '&lt;1 min'
+      : formatDriveDuration(numericMinutes);
+  };
+
+  const getSupervisorInitials = (supervisor) => supervisor
+    .split(' ')
+    .map(name => name.charAt(0).toUpperCase())
+    .join('');
+
+  const renderDriveType = (isNightDrive) => `
+    <span class="drive-type ${isNightDrive ? 'drive-type-night' : 'drive-type-day'}">
+      ${isNightDrive ? 'Night' : 'Day'}
+    </span>
+  `;
+
   const requiredTotalHours = formatRequiredHours(goalHours);
   const requiredNightHours = formatRequiredHours(goalNightHours);
   const hasMetTotalRequirement = totalHours >= goalHours;
@@ -132,19 +166,13 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
       </div>
     `;
   
+  const pausedDrives = drives.filter((drive) => Array.isArray(drive.segments) && drive.segments.length > 1);
+  const uninterruptedDrives = drives.filter((drive) => !Array.isArray(drive.segments) || drive.segments.length <= 1);
+
   let drivesHTML = '';
-  drives.forEach((drive, index) => {
-    const segmentCount = Array.isArray(drive.segments) ? drive.segments.length : 0;
-    const duration = `${Math.floor(drive.duration / 60)}h ${drive.duration % 60}m${segmentCount > 1 ? ` (${segmentCount} segments)` : ''}`;
-    const type = drive.isNightDrive ? 'Night' : 'Day';
+  uninterruptedDrives.forEach((drive, index) => {
     const supervisor = drive.supervisorName || '';
-    
-    // Generate initials from supervisor name
-    const initials = supervisor
-      .split(' ')
-      .map(name => name.charAt(0).toUpperCase())
-      .join('');
-    
+    const initials = getSupervisorInitials(supervisor);
     const rowColor = index % 2 === 0 ? '#f9fafb' : '#ffffff';
     
     drivesHTML += `
@@ -152,12 +180,8 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
         <td class="date-cell">${escapeHTML(formatDateForDisplay(drive.date))}</td>
         <td class="time-cell">${escapeHTML(drive.startTime)}</td>
         <td class="time-cell">${escapeHTML(drive.endTime)}</td>
-        <td class="hours-cell">${duration}</td>
-        <td class="type-cell">
-          <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; color: white; background-color: ${drive.isNightDrive ? '#1f2937' : '#f59e0b'};">
-            ${escapeHTML(type)}
-          </span>
-        </td>
+        <td class="hours-cell">${escapeHTML(formatDriveDuration(drive.duration))}</td>
+        <td class="type-cell">${renderDriveType(drive.isNightDrive)}</td>
         <td class="supervisor-cell">
           <div style="border-bottom: 1px solid #d1d5db; min-height: 20px; padding-bottom: 2px;">${escapeHTML(supervisor)}</div>
         </td>
@@ -167,6 +191,59 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
       </tr>
     `;
   });
+
+  const pausedDrivesHTML = pausedDrives.map((drive) => {
+    const supervisor = drive.supervisorName || '';
+    const initials = getSupervisorInitials(supervisor);
+    const segmentCount = drive.segments.length;
+    const segmentRows = drive.segments.map((segment, index) => `
+      <tr class="paused-segment-row">
+        <td class="segment-label-cell">Segment ${index + 1}</td>
+        <td class="time-cell">${escapeHTML(segment.startTime)}</td>
+        <td class="time-cell">${escapeHTML(segment.endTime)}</td>
+        <td class="hours-cell">${formatSegmentDuration(segment.durationMinutes)}</td>
+        <td class="type-cell">${renderDriveType(segment.isNightDrive ?? drive.isNightDrive)}</td>
+        <td class="segment-supervisor-cell" colspan="2"></td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="paused-drive-group">
+        <table class="drives-table paused-drive-table">
+          <thead>
+            <tr>
+              <th>Drive / Segment</th>
+              <th>Start Time</th>
+              <th>End Time</th>
+              <th>Duration</th>
+              <th>Type</th>
+              <th>Supervisor</th>
+              <th>Initials</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="paused-drive-parent">
+              <td class="date-cell">
+                ${escapeHTML(formatDateForDisplay(drive.date))}
+                <div class="paused-drive-count">${segmentCount} driving segments</div>
+              </td>
+              <td class="time-cell">${escapeHTML(drive.startTime)}</td>
+              <td class="time-cell">${escapeHTML(drive.endTime)}</td>
+              <td class="hours-cell">${escapeHTML(formatDriveDuration(drive.duration))}</td>
+              <td class="type-cell">${renderDriveType(drive.isNightDrive)}</td>
+              <td class="supervisor-cell">
+                <div class="supervisor-line">${escapeHTML(supervisor)}</div>
+              </td>
+              <td class="initials-cell">
+                <div class="initials-line">${escapeHTML(initials)}</div>
+              </td>
+            </tr>
+            ${segmentRows}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
 
   return `
     <!DOCTYPE html>
@@ -296,7 +373,8 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
           .drives-section {
             margin-top: 30px;
           }
-          .drives-section h2 {
+          .drives-section h2,
+          .paused-drives-section h2 {
             color: #1f2937;
             margin-bottom: 20px;
             font-size: 20px;
@@ -354,12 +432,95 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
             text-align: center;
             white-space: nowrap;
           }
+          .drive-type {
+            display: inline-block;
+            padding: 2px 7px;
+            border: 1px solid #6b7280;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+          }
+          .drive-type-night {
+            color: #ffffff;
+            background: #1f2937;
+            border-color: #1f2937;
+          }
+          .drive-type-day {
+            color: #78350f;
+            background: #fef3c7;
+            border-color: #d97706;
+          }
           .supervisor-cell {
             min-width: 120px;
           }
           .initials-cell {
             min-width: 80px;
             text-align: center;
+          }
+          .paused-drives-section {
+            margin-top: 34px;
+          }
+          .paused-drives-section h2 {
+            margin-bottom: 6px;
+          }
+          .paused-drives-note {
+            margin: 0 0 14px 0;
+            color: #4b5563;
+            font-size: 12px;
+            line-height: 1.4;
+          }
+          .paused-drive-group {
+            margin-bottom: 18px;
+            page-break-inside: avoid;
+          }
+          .paused-drive-table {
+            margin-bottom: 0;
+            border: 3px solid #374151;
+            border-radius: 0;
+            box-shadow: none;
+          }
+          .paused-drive-parent td {
+            background: #e5e7eb;
+            border-bottom: 2px solid #374151;
+            color: #111827;
+            font-weight: 700;
+          }
+          .paused-drive-count {
+            margin-top: 2px;
+            color: #374151;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+          }
+          .supervisor-line,
+          .initials-line {
+            min-height: 20px;
+            padding-bottom: 2px;
+            border-bottom: 1px solid #6b7280;
+          }
+          .initials-line {
+            font-weight: 700;
+          }
+          .paused-segment-row td {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            background: #ffffff;
+            color: #374151;
+            font-size: 12px;
+          }
+          .paused-segment-row:last-child td {
+            border-bottom: 0;
+          }
+          .segment-label-cell {
+            padding-left: 18px !important;
+            color: #111827 !important;
+            font-weight: 700;
+            white-space: nowrap;
+          }
+          .segment-supervisor-cell {
+            background: #f9fafb !important;
           }
           .footer {
             margin-top: 28px;
@@ -706,8 +867,9 @@ ${permitNumberHTML}
           `}
         </div>
 
+        ${uninterruptedDrives.length > 0 ? `
         <div class="drives-section">
-          <h2>${isOfficial ? 'Drive Log' : '📝 Drive Log'} (${drives.length} total drives)</h2>
+          <h2>${isOfficial ? 'Drive Log' : '📝 Drive Log'} (${uninterruptedDrives.length} uninterrupted ${uninterruptedDrives.length === 1 ? 'drive' : 'drives'})</h2>
           <table class="drives-table">
               <thead>
                 <tr>
@@ -725,6 +887,20 @@ ${permitNumberHTML}
               </tbody>
             </table>
         </div>
+        ` : ''}
+
+        ${pausedDrives.length > 0 ? `
+        <div class="paused-drives-section">
+          <h2>Paused Drives (${pausedDrives.length})</h2>
+          <p class="paused-drives-note">
+            ${isOfficial
+              ? 'A paused drive is one driving session that was temporarily stopped and later resumed. The bold row shows the combined active-driving total, and the rows underneath show each segment between pauses. Time while the drive was paused is not included in the total duration.'
+              : 'Each bold row is one saved drive. Its driving segments are listed underneath; paused time is excluded from the total duration.'
+            }
+          </p>
+          ${pausedDrivesHTML}
+        </div>
+        ` : ''}
 
         ${isOfficial ? `
         <div class="profile-agreement">
