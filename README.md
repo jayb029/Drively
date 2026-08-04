@@ -1,220 +1,107 @@
-# 🛣️ Drively - Driving Log Tracker
+# Drively
 
-A clean, modern, offline-first mobile app to help users (primarily teens) track their required driving hours for permits and licenses. No accounts or ads—just simple, reliable tracking with helpful extras like streaks, freeze days, goals, and export options. Android cloud backup is optional and off by default.
+Drively is an offline-first driving logbook built with React Native and Expo. It helps learner drivers record practice sessions, track day and night driving goals, and export a logbook without creating an account.
 
-## ✨ Features
+Android is the primary supported platform. The app includes custom Android code for picture-in-picture drive tracking, so a development build is required for complete local testing.
 
-### 🆕 Onboarding
-- License type selection (Learner's Permit, Restricted, Unrestricted)
-- License acquisition date tracking
-- Goal setting with predefined options (25h, 50h including 10 at night, custom)
-- Data storage disclaimer and agreement
+## Features
 
-### 🚗 Drive Logging
-- Manual start/stop timer with pause functionality
-- Automatic drive details recording:
-  - Date, start/end time, duration
-  - Night drive detection (auto or manual)
-  - Weather conditions (optional)
-  - Skills practiced (optional)
-  - Supervising adult info (optional)
+- Timed and manually entered driving sessions
+- Day and night driving progress
+- Optional background location tracking and automatic drive detection
+- Supervisor profiles and signatures
+- Configurable goals, units, appearance, and privacy controls
+- JSON backup and restore, CSV export, and PDF reports
+- Local storage by default, with optional Android cloud backup
+- Optional weather lookup through Open-Meteo
 
-### 📊 Progress Tracking
-- Visual progress bars for day/night hours
-- Overall completion percentage
-- Goal tracking and milestone celebrations
-- Upgrade prompts when eligible for next license level
+## Privacy
 
-### 🔥 Streak System
-- Daily driving streak counter
-- Longest streak records
-- Freeze day system (up to 10 per month)
-- Streak preservation reminders
+Drively does not require an account and does not include analytics or advertising. Logbook data is stored on the device by default.
 
-### 📤 Export & Backup
-- Export options: JSON (full backup), CSV (drives), TXT (summary report)
-- Social sharing of progress
-- Regular backup reminders
-- Local file storage with an automatic recovery copy
+Some features use additional services or device capabilities:
 
-### ⚙️ Smart Features
-- Offline core logging and reporting
-- Auto-recovery from corrupted data
-- Customizable night driving hours
-- Backup and restore functionality
+- Drive tracking and automatic detection use location permissions when enabled.
+- Weather lookup sends approximate coordinates directly to Open-Meteo when enabled.
+- Android cloud backup can copy the logbook to the backup account configured on the device. This setting is off by default.
+- Exported files are handled by the destination selected through the operating system's share or file picker.
 
-## 🛠 Tech Stack
+## Requirements
 
-- **Framework**: React Native with Expo
-- **Navigation**: React Navigation (Stack + Bottom Tabs)
-- **State Management**: React Context API + useReducer
-- **Storage**: Expo File System (JSON files)
-- **UI**: Custom components with modern styling
-- **Export**: Expo Sharing for file exports
+- Node.js and npm
+- Android Studio and the Android SDK for Android development
+- JDK 21 for Android Gradle builds
+- An Expo development build for features that depend on native Android code
 
-## 📱 Installation & Setup
+## Development setup
 
-### Prerequisites
-- Node.js (14 or higher)
-- npm or yarn
-- Expo CLI (optional but recommended)
+Install dependencies from the repository root:
 
-### Getting Started
-
-1. **Clone and install dependencies:**
-   ```bash
-   cd Drively
-   npm install
-   ```
-
-2. **Start the development server:**
-   ```bash
-   npm start
-   # or
-   npx expo start
-   ```
-
-3. **Run on device/simulator:**
-   - iOS: Press `i` in terminal or scan QR code with Camera app
-   - Android: Press `a` in terminal or scan QR code with Expo Go app
-   - Web: Press `w` in terminal
-
-### Build Commands
-
-```bash
-# Start development server
-npm start
-
-# Run on iOS simulator
-npm run ios
-
-# Run on Android emulator
-npm run android
-
-# Run on web
-npm run web
+```sh
+npm ci
 ```
 
-## 🏗 Project Structure
+Build and install the Android development app:
 
+```sh
+cd android
+JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+The debug APK does not bundle the JavaScript application. With a phone connected over USB, forward the Metro ports and start Expo from the repository root:
+
+```sh
+cd ..
+adb reverse tcp:8081 tcp:8081
+adb reverse tcp:19000 tcp:19000
+adb reverse tcp:19001 tcp:19001
+npx expo start --dev-client
+```
+
+For an emulator or a device that can reach the development machine directly, start Metro with:
+
+```sh
+npm start -- --dev-client
+```
+
+## Useful commands
+
+```sh
+npm run test:night-driving  # Run the focused night-driving tests
+npx expo export -p android  # Verify the Android JavaScript and asset bundle
+npm run version:set -- 2.1  # Update coordinated version metadata
+```
+
+EAS build profiles and update channels are defined in `eas.json`:
+
+```sh
+npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform android --profile production
+npx eas-cli update --channel preview --message "Describe the update"
+npx eas-cli update --channel production --message "Describe the update"
+```
+
+Expo updates can deliver JavaScript, styling, and bundled asset changes. Native dependencies, permissions, Expo SDK changes, and runtime-version changes require a new native build.
+
+## Project structure
+
+```text
 src/
-├── components/          # Reusable UI components
-├── contexts/           # React Context providers
-│   └── DrivingContext.js
-├── navigation/         # Navigation configuration
-│   └── AppNavigator.js
-├── screens/           # App screens
-│   ├── OnboardingScreen.js
-│   ├── DashboardScreen.js
-│   ├── LogDriveScreen.js
-│   ├── DriveHistoryScreen.js
-│   ├── ExportScreen.js
-│   └── SettingsScreen.js
-└── utils/             # Utility functions
-    ├── storage.js     # Data persistence
-    ├── streaks.js     # Streak calculations
-    └── time.js        # Time utilities
+  components/   Shared interface components
+  contexts/     Application state and theme providers
+  navigation/   Stack and tab navigation
+  screens/      Application screens and settings pages
+  services/     Drive detection, active tracking, and Android PiP integration
+  utils/        Storage, exports, calculations, logging, and formatting
+android/        Native Android project and Drively-specific modules
+scripts/        Focused tests and version tooling
 ```
 
-## 💾 Data Storage
+## Contributing
 
-The app uses a local JSON file storage system:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidance. Please report suspected vulnerabilities according to [SECURITY.md](SECURITY.md), not through a public issue.
 
-- **Location**: Device's document directory (`Drively/data.json`)
-- **Backup**: Automatic backup file (`Drively/backup.json`)
-- **Format**: Structured JSON with versioning for safe updates
-- **Recovery**: Automatic corruption detection and backup restoration
+## License
 
-### Data Structure
-```json
-{
-  "user": {
-    "licenseType": "learners",
-    "goalDayHours": 40,
-    "goalNightHours": 10,
-    "completedDayHours": 25.5,
-    "completedNightHours": 6.0
-  },
-  "drives": [...],
-  "streaks": {...},
-  "settings": {...}
-}
-```
-
-## 🔒 Privacy & Security
-
-- **Offline-first**: Core logging works without an account or network connection
-- **User-controlled storage**: Logbook data stays on device by default; Android cloud backup can be enabled or disabled in Data and backups
-- **Limited network use**: When enabled, weather lookup sends approximate coordinates directly to Open-Meteo
-- **No Analytics**: No tracking or data collection
-- **No Accounts**: No user registration or authentication required
-- **Transparent**: Open source and auditable
-
-## 🧪 Testing
-
-```bash
-# Run the app in development mode
-npm start
-
-# Test on different platforms
-npm run ios    # iOS simulator
-npm run android # Android emulator
-npm run web    # Web browser
-```
-
-## 📦 Building for Production
-
-```bash
-# Build for app stores
-npx expo build:ios
-npx expo build:android
-
-# Or use EAS Build (recommended)
-npx eas build --platform ios
-npx eas build --platform android
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-## 📋 Development Guidelines
-
-- Use functional components with hooks
-- Follow React Native best practices
-- Implement proper error handling
-- Use meaningful component and variable names
-- Keep components small and focused
-- Add JSDoc comments for functions
-
-## 🐛 Known Issues
-
-- None currently reported
-
-## 🗺 Roadmap
-
-- [ ] Apple Watch companion app
-- [ ] Widget support for iOS/Android
-- [ ] Dark mode theme
-- [ ] More detailed analytics
-- [ ] Parent/instructor dashboard
-- [ ] Integration with DMV requirements by state
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Built with love for safe driving education
-- Inspired by the need for simple, offline-first mobile apps
-- Thanks to the React Native and Expo communities
-
----
-
-**Made with ❤️ for safe driving**
+Drively is available under the [MIT License](LICENSE).
