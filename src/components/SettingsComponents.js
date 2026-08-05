@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../contexts/ThemeContext';
+import { haptics, withHaptic } from '../utils/haptics';
 
 const styleCache = new WeakMap();
 
@@ -26,7 +27,7 @@ export function SettingsPage({ children, navigation, subtitle, title }) {
           <TouchableOpacity
             accessibilityLabel="Go back"
             accessibilityRole="button"
-            onPress={() => navigation.goBack()}
+            onPress={withHaptic(() => navigation.goBack(), haptics.selection)}
             style={styles.backButton}
           >
             <Icon name="arrow-left" size={21} color={theme.colors.text.secondary} />
@@ -62,7 +63,7 @@ export function SettingsActionRow({ danger = false, label, onPress, subtitle, va
     <TouchableOpacity
       accessibilityRole="button"
       disabled={!onPress}
-      onPress={onPress}
+      onPress={withHaptic(onPress, danger ? haptics.warning : haptics.selection)}
       style={[styles.row, danger && styles.dangerRow]}
     >
       <View style={styles.rowCopy}>
@@ -88,7 +89,10 @@ export function SettingsSwitchRow({ disabled = false, label, onValueChange, subt
       <Switch
         accessibilityLabel={label}
         disabled={disabled}
-        onValueChange={onValueChange}
+        onValueChange={(nextValue) => {
+          haptics.selection();
+          onValueChange(nextValue);
+        }}
         thumbColor={value ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
         trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
         value={value}
@@ -112,7 +116,10 @@ export function SettingsChoice({ label, onChange, options, value }) {
               accessibilityRole="button"
               accessibilityState={{ selected }}
               key={option.value}
-              onPress={() => onChange(option.value)}
+              onPress={() => {
+                if (!selected) haptics.selection();
+                onChange(option.value);
+              }}
               style={[styles.choice, selected && styles.choiceSelected]}
             >
               <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{option.label}</Text>
@@ -131,7 +138,7 @@ export function SettingsButton({ disabled = false, label, onPress, secondary = f
     <TouchableOpacity
       accessibilityRole="button"
       disabled={disabled}
-      onPress={onPress}
+      onPress={withHaptic(onPress, secondary ? haptics.selection : haptics.action)}
       style={[styles.button, secondary && styles.secondaryButton, disabled && styles.disabled]}
     >
       <Text style={[styles.buttonText, secondary && styles.secondaryButtonText]}>{label}</Text>

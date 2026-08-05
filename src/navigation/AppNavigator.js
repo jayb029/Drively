@@ -6,6 +6,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
+import { haptics } from '../utils/haptics';
 
 // Screens
 import OnboardingScreen from '../screens/OnboardingScreen';
@@ -54,6 +55,7 @@ function MainTabs() {
   
   return (
     <Tab.Navigator
+      screenListeners={{ tabPress: () => haptics.selection() }}
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused }) => {
           let iconName;

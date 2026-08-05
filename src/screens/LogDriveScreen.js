@@ -41,6 +41,7 @@ import {
 } from '../utils/nightDriving';
 import { autoSelectWeatherOption, fetchWeatherData } from '../utils/weather';
 import { formatDistanceFromKm, formatSpeedFromKmh, getSpeedUnitLabel } from '../utils/units';
+import { haptics } from '../utils/haptics';
 import {
   addDrivePipModeListener,
   isInDrivePictureInPictureMode,
@@ -472,6 +473,7 @@ export default function LogDriveScreen({ navigation }) {
     }
 
     setIsActive(true);
+    haptics.important();
     logUserAction(fromDetection ? 'start_detected_drive' : 'start_drive', 'LOG_DRIVE');
 
     return true;
@@ -680,6 +682,7 @@ export default function LogDriveScreen({ navigation }) {
           split,
         });
         addDrive(drive);
+        haptics.success();
         if (sourceEventId) {
           updateDetectedEvent({ id: sourceEventId, status: 'logged', loggedAt: new Date().toISOString() });
         }
@@ -699,6 +702,7 @@ export default function LogDriveScreen({ navigation }) {
           { cancelable: false }
         );
       } else {
+        haptics.warning();
         if (sourceEventId) {
           deleteDetectedEvent(sourceEventId);
         }
@@ -723,6 +727,7 @@ export default function LogDriveScreen({ navigation }) {
     setIsChangingTrackingState(true);
     try {
       await pauseActiveDriveTracking();
+      haptics.action();
       logUserAction('pause_drive', 'LOG_DRIVE');
     } catch (error) {
       logError(error, 'TRACKING', 'Unable to pause live drive tracking');
@@ -738,6 +743,7 @@ export default function LogDriveScreen({ navigation }) {
     setIsChangingTrackingState(true);
     try {
       await resumeActiveDriveTracking();
+      haptics.action();
       logUserAction('resume_drive', 'LOG_DRIVE');
     } catch (error) {
       logError(error, 'TRACKING', 'Unable to resume live drive tracking');
@@ -1143,7 +1149,10 @@ function ChoiceList({ multi, onChange, styles, value, values }) {
           <TouchableOpacity
             key={item}
             style={[styles.choice, selected && styles.choiceSelected]}
-            onPress={() => onChange(item)}
+            onPress={() => {
+              if (!selected || multi) haptics.selection();
+              onChange(item);
+            }}
           >
             <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{item}</Text>
           </TouchableOpacity>

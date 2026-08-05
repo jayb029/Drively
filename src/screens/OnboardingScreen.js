@@ -20,6 +20,7 @@ import {
   getDateOfBirthDate,
   getMinimumDateOfBirthDate,
 } from '../utils/time';
+import { haptics } from '../utils/haptics';
 
 const LICENSE_TYPES = [
   {
@@ -157,6 +158,7 @@ export default function OnboardingScreen({ navigation }) {
   };
 
   const handleLicenseSelection = (type) => {
+    if (type !== licenseType) haptics.selection();
     setLicenseType(type);
     if (type === 'unrestricted') {
       Alert.alert(
@@ -168,6 +170,7 @@ export default function OnboardingScreen({ navigation }) {
   };
 
   const handleGoalSelection = (preset) => {
+    haptics.selection();
     if (preset.id === 'custom') {
       setCustomGoal(true);
     } else {
@@ -182,10 +185,12 @@ export default function OnboardingScreen({ navigation }) {
       return;
     }
     setStep(3);
+    haptics.action();
   };
 
   const handleDriverInfoContinue = () => {
     setStep(4);
+    haptics.action();
   };
 
   const renderUnitOption = ({ option, isSelected, onPress }) => (
@@ -265,6 +270,7 @@ export default function OnboardingScreen({ navigation }) {
     }
 
     requestOnboardingPermissions(weatherEnabled);
+    haptics.success();
     // Navigation will happen automatically when onboardingComplete becomes true
   };
 

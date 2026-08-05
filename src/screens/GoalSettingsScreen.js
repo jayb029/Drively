@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import * as Haptics from 'expo-haptics';
 import {
   Alert,
   ScrollView,
@@ -15,14 +14,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { logUserAction } from '../utils/logger';
 import { formatDuration } from '../utils/time';
 import { sumDriveMinutes } from '../utils/nightDriving';
+import { haptics } from '../utils/haptics';
 
 const TOTAL_HOUR_PRESETS = [10, 25, 50, 60, 75, 100];
 const NIGHT_HOUR_PRESETS = [0, 5, 10, 15, 20, 25];
-
-const playSelectionHaptic = () => Haptics.selectionAsync().catch(() => {});
-const playAdjustmentHaptic = () => (
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
-);
 
 export default function GoalSettingsScreen({ navigation }) {
   const { drives, setUserInfo, user } = useDriving();
@@ -62,7 +57,7 @@ export default function GoalSettingsScreen({ navigation }) {
 
     setUserInfo({ goalDayHours: total, goalNightHours: night });
     logUserAction('update_goals', 'GOAL_SETTINGS', { totalHours: total, nightHours: night });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    haptics.success();
     navigation.goBack();
   };
 
@@ -153,14 +148,14 @@ function GoalPicker({ label, max, min, onChange, presets, showPresets, styles, v
     if (nextValue === safeValue) return;
 
     onChange(String(nextValue));
-    playAdjustmentHaptic();
+    haptics.action();
   };
 
   const selectPreset = (preset) => {
     if (preset === safeValue) return;
 
     onChange(String(preset));
-    playSelectionHaptic();
+    haptics.selection();
   };
 
   return (
