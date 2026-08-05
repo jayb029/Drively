@@ -30,6 +30,7 @@ export default function GoalSettingsScreen({ navigation }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [totalHours, setTotalHours] = useState(String(user.goalDayHours));
   const [nightHours, setNightHours] = useState(String(user.goalNightHours));
+  const [showPresets, setShowPresets] = useState(false);
 
   const total = Number(totalHours);
   const night = Number(nightHours);
@@ -80,48 +81,45 @@ export default function GoalSettingsScreen({ navigation }) {
           </View>
         </View>
 
-        <View style={styles.odometer}>
-          <View style={styles.odometerBlock}>
-            <Text style={styles.odometerValue}>{formatDuration(totalLogged)}</Text>
-            <Text style={styles.odometerLabel}>total logged</Text>
-          </View>
-          <View style={styles.odometerDivider} />
-          <View style={styles.odometerBlock}>
-            <Text style={styles.odometerValue}>{formatDuration(nightLogged)}</Text>
-            <Text style={styles.odometerLabel}>night logged</Text>
-          </View>
-        </View>
+        <Text style={styles.loggedSummary}>
+          You have logged {formatDuration(totalLogged)}, including {formatDuration(nightLogged)} at night.
+        </Text>
 
         <View style={styles.form}>
           <GoalPicker
-            helper="Choose a common requirement or fine-tune it."
             label="Total required hours"
             max={100}
             min={1}
             onChange={updateTotalHours}
             presets={TOTAL_HOUR_PRESETS}
+            showPresets={showPresets}
             styles={styles}
             value={totalHours}
           />
           <GoalPicker
-            helper="These hours are included in your total."
             label="Night minimum"
             max={Math.max(1, Number(totalHours) || 1)}
             min={0}
             onChange={setNightHours}
             presets={NIGHT_HOUR_PRESETS}
+            showPresets={showPresets}
             styles={styles}
             value={nightHours}
           />
         </View>
 
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => setShowPresets((visible) => !visible)}
+          style={styles.disclosure}
+        >
+          <Text style={styles.disclosureText}>Common values</Text>
+          <Text style={styles.disclosureAction}>{showPresets ? 'Hide' : 'Show'}</Text>
+        </TouchableOpacity>
+
         <View style={styles.preview}>
-          <Text style={styles.previewTitle}>After saving</Text>
           {valid ? (
             <>
-              <Text style={styles.previewText}>
-                {total} hours total · {night} hours at night
-              </Text>
               <Text style={styles.remainingText}>
                 {formatDuration(totalRemaining)} left overall · {formatDuration(nightRemaining)} left at night
               </Text>
@@ -144,7 +142,7 @@ export default function GoalSettingsScreen({ navigation }) {
   );
 }
 
-function GoalPicker({ helper, label, max, min, onChange, presets, styles, value }) {
+function GoalPicker({ label, max, min, onChange, presets, showPresets, styles, value }) {
   const [editing, setEditing] = useState(false);
   const numericValue = Number(value);
   const safeValue = Number.isFinite(numericValue) ? Math.min(max, Math.max(min, numericValue)) : min;
@@ -168,10 +166,17 @@ function GoalPicker({ helper, label, max, min, onChange, presets, styles, value 
   return (
     <View style={styles.field}>
       <View style={styles.goalHeader}>
-        <View style={styles.labelGroup}>
-          <Text style={styles.label}>{label}</Text>
-          <Text style={styles.helper}>{helper}</Text>
-        </View>
+        <Text style={styles.label}>{label}</Text>
+        <View style={styles.compactStepper}>
+          <TouchableOpacity
+            accessibilityLabel={`Decrease ${label.toLowerCase()}`}
+            accessibilityRole="button"
+            disabled={safeValue <= min}
+            onPress={() => adjust(-1)}
+            style={[styles.stepButton, safeValue <= min && styles.disabledStepButton]}
+          >
+            <Text style={styles.stepButtonText}>−</Text>
+          </TouchableOpacity>
         {editing ? (
           <View style={styles.inputRow}>
             <TextInput
@@ -199,8 +204,18 @@ function GoalPicker({ helper, label, max, min, onChange, presets, styles, value 
             <Text style={styles.valueButtonUnit}>hr</Text>
           </TouchableOpacity>
         )}
+          <TouchableOpacity
+            accessibilityLabel={`Increase ${label.toLowerCase()}`}
+            accessibilityRole="button"
+            disabled={safeValue >= max}
+            onPress={() => adjust(1)}
+            style={[styles.stepButton, safeValue >= max && styles.disabledStepButton]}
+          >
+            <Text style={styles.stepButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.presetGrid}>
+      {showPresets && <View style={styles.presetGrid}>
         {availablePresets.map((preset) => {
           const selected = preset === safeValue;
           return (
@@ -216,28 +231,7 @@ function GoalPicker({ helper, label, max, min, onChange, presets, styles, value 
             </TouchableOpacity>
           );
         })}
-      </View>
-      <View style={styles.stepper}>
-        <TouchableOpacity
-          accessibilityLabel={`Decrease ${label.toLowerCase()}`}
-          accessibilityRole="button"
-          disabled={safeValue <= min}
-          onPress={() => adjust(-1)}
-          style={[styles.stepButton, safeValue <= min && styles.disabledStepButton]}
-        >
-          <Text style={styles.stepButtonText}>−</Text>
-        </TouchableOpacity>
-        <Text style={styles.stepperValue}>Adjust by 1 hour</Text>
-        <TouchableOpacity
-          accessibilityLabel={`Increase ${label.toLowerCase()}`}
-          accessibilityRole="button"
-          disabled={safeValue >= max}
-          onPress={() => adjust(1)}
-          style={[styles.stepButton, safeValue >= max && styles.disabledStepButton]}
-        >
-          <Text style={styles.stepButtonText}>+</Text>
-        </TouchableOpacity>
-      </View>
+      </View>}
     </View>
   );
 }
@@ -289,38 +283,10 @@ function createStyles(theme) {
       fontSize: 15,
       lineHeight: 22,
     },
-    odometer: {
-      minHeight: 94,
-      flexDirection: 'row',
-      alignItems: 'stretch',
-      borderWidth: 1,
-      borderColor: theme.colors.border.dark,
-      borderRadius: 7,
-      backgroundColor: theme.colors.instrument.background,
-      overflow: 'hidden',
-    },
-    odometerBlock: {
-      flex: 1,
-      justifyContent: 'center',
-      paddingHorizontal: 16,
-    },
-    odometerDivider: {
-      width: 1,
-      backgroundColor: theme.colors.instrument.muted,
-      opacity: 0.45,
-    },
-    odometerValue: {
-      color: theme.colors.instrument.text,
-      fontFamily: theme.typography.families.utility,
-      fontVariant: ['tabular-nums'],
-      fontSize: 24,
-      fontWeight: '700',
-    },
-    odometerLabel: {
-      color: theme.colors.instrument.muted,
-      fontSize: 12,
-      marginTop: 2,
-      opacity: 0.72,
+    loggedSummary: {
+      color: theme.colors.text.secondary,
+      fontSize: 14,
+      lineHeight: 20,
     },
     form: {
       borderTopWidth: 1,
@@ -329,30 +295,26 @@ function createStyles(theme) {
     },
     field: {
       paddingVertical: 16,
-      gap: 14,
+      gap: 12,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border.light,
     },
     goalHeader: {
-      minHeight: 42,
+      minHeight: 48,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
-    },
-    labelGroup: {
-      flex: 1,
-      gap: 3,
     },
     label: {
       color: theme.colors.text.primary,
       fontSize: 15,
       fontWeight: '600',
     },
-    helper: {
-      color: theme.colors.text.secondary,
-      fontSize: 12,
-      lineHeight: 17,
+    compactStepper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
     },
     inputRow: {
       flexDirection: 'row',
@@ -433,15 +395,6 @@ function createStyles(theme) {
     selectedPresetText: {
       color: theme.colors.text.inverse,
     },
-    stepper: {
-      minHeight: 44,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      borderTopWidth: 1,
-      borderColor: theme.colors.border.light,
-      paddingTop: 12,
-    },
     stepButton: {
       width: 44,
       height: 44,
@@ -461,22 +414,18 @@ function createStyles(theme) {
       lineHeight: 26,
       fontWeight: '500',
     },
-    stepperValue: {
-      color: theme.colors.text.secondary,
-      fontSize: 12,
+    disclosure: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border.light,
     },
+    disclosureText: { color: theme.colors.text.primary, fontSize: 14, fontWeight: '600' },
+    disclosureAction: { color: theme.colors.primary, fontSize: 14, fontWeight: '600' },
     preview: {
       gap: 4,
-    },
-    previewTitle: {
-      color: theme.colors.text.primary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    previewText: {
-      color: theme.colors.text.secondary,
-      fontSize: 14,
-      lineHeight: 20,
     },
     remainingText: {
       color: theme.colors.primary,
