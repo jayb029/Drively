@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import {
   Alert,
   ScrollView,
@@ -15,6 +16,14 @@ import { logUserAction } from '../utils/logger';
 import { formatDuration } from '../utils/time';
 import { sumDriveMinutes } from '../utils/nightDriving';
 
+const TOTAL_HOUR_PRESETS = [10, 25, 50, 60, 75, 100];
+const NIGHT_HOUR_PRESETS = [0, 5, 10, 15, 20, 25];
+
+const playSelectionHaptic = () => Haptics.selectionAsync().catch(() => {});
+const playAdjustmentHaptic = () => (
+  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {})
+);
+
 export default function GoalSettingsScreen({ navigation }) {
   const { drives, setUserInfo, user } = useDriving();
   const { theme } = useTheme();
@@ -26,6 +35,23 @@ export default function GoalSettingsScreen({ navigation }) {
   const night = Number(nightHours);
   const { totalMinutes: totalLogged, nightMinutes: nightLogged } = sumDriveMinutes(drives);
   const valid = Number.isFinite(total) && Number.isFinite(night) && total > 0 && night >= 0 && night <= total;
+  const validationMessage = !Number.isFinite(total) || total <= 0
+    ? 'Enter a total above zero.'
+    : !Number.isFinite(night) || night < 0
+      ? 'Enter a valid night minimum.'
+      : 'Night hours cannot be greater than total hours.';
+  const totalRemaining = valid ? Math.max(0, Math.round((total * 60) - totalLogged)) : 0;
+  const nightRemaining = valid ? Math.max(0, Math.round((night * 60) - nightLogged)) : 0;
+
+  const updateTotalHours = (nextValue) => {
+    setTotalHours(String(nextValue));
+
+    const nextTotal = Number(nextValue);
+    const currentNight = Number(nightHours);
+    if (Number.isFinite(nextTotal) && Number.isFinite(currentNight) && currentNight > nextTotal) {
+      setNightHours(String(nextTotal));
+    }
+  };
 
   const saveGoals = () => {
     if (!valid) {
@@ -35,6 +61,7 @@ export default function GoalSettingsScreen({ navigation }) {
 
     setUserInfo({ goalDayHours: total, goalNightHours: night });
     logUserAction('update_goals', 'GOAL_SETTINGS', { totalHours: total, nightHours: night });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     navigation.goBack();
   };
 
@@ -66,33 +93,41 @@ export default function GoalSettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.form}>
-          <GoalSlider
+          <GoalPicker
+            helper="Choose a common requirement or fine-tune it."
             label="Total required hours"
             max={100}
             min={1}
-            onChange={setTotalHours}
+            onChange={updateTotalHours}
+            presets={TOTAL_HOUR_PRESETS}
             styles={styles}
-            theme={theme}
             value={totalHours}
           />
-          <GoalSlider
+          <GoalPicker
+            helper="These hours are included in your total."
             label="Night minimum"
             max={Math.max(1, Number(totalHours) || 1)}
             min={0}
             onChange={setNightHours}
+            presets={NIGHT_HOUR_PRESETS}
             styles={styles}
-            theme={theme}
             value={nightHours}
           />
         </View>
 
         <View style={styles.preview}>
-          <Text style={styles.previewTitle}>New requirement</Text>
-          <Text style={styles.previewText}>
-            {Number.isFinite(total) ? total : 0} total hours, including {Number.isFinite(night) ? night : 0} at night
-          </Text>
-          {!valid && (
-            <Text style={styles.errorText}>Night hours cannot be greater than total hours.</Text>
+          <Text style={styles.previewTitle}>After saving</Text>
+          {valid ? (
+            <>
+              <Text style={styles.previewText}>
+                {total} hours total · {night} hours at night
+              </Text>
+              <Text style={styles.remainingText}>
+                {formatDuration(totalRemaining)} left overall · {formatDuration(nightRemaining)} left at night
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.errorText}>{validationMessage}</Text>
           )}
         </View>
 
@@ -109,26 +144,34 @@ export default function GoalSettingsScreen({ navigation }) {
   );
 }
 
-function GoalSlider({ label, max, min, onChange, styles, theme, value }) {
+function GoalPicker({ helper, label, max, min, onChange, presets, styles, value }) {
   const [editing, setEditing] = useState(false);
-  const [trackWidth, setTrackWidth] = useState(1);
   const numericValue = Number(value);
   const safeValue = Number.isFinite(numericValue) ? Math.min(max, Math.max(min, numericValue)) : min;
-  const progress = max === min ? 0 : ((safeValue - min) / (max - min)) * 100;
-
-  const updateFromPosition = (position) => {
-    const nextValue = min + (Math.max(0, Math.min(position, trackWidth)) / trackWidth) * (max - min);
-    onChange(String(Math.round(nextValue)));
-  };
+  const availablePresets = presets.filter((preset) => preset >= min && preset <= max);
 
   const adjust = (direction) => {
-    onChange(String(Math.min(max, Math.max(min, safeValue + direction))));
+    const nextValue = Math.min(max, Math.max(min, safeValue + direction));
+    if (nextValue === safeValue) return;
+
+    onChange(String(nextValue));
+    playAdjustmentHaptic();
+  };
+
+  const selectPreset = (preset) => {
+    if (preset === safeValue) return;
+
+    onChange(String(preset));
+    playSelectionHaptic();
   };
 
   return (
     <View style={styles.field}>
       <View style={styles.goalHeader}>
-        <Text style={styles.label}>{label}</Text>
+        <View style={styles.labelGroup}>
+          <Text style={styles.label}>{label}</Text>
+          <Text style={styles.helper}>{helper}</Text>
+        </View>
         {editing ? (
           <View style={styles.inputRow}>
             <TextInput
@@ -157,32 +200,43 @@ function GoalSlider({ label, max, min, onChange, styles, theme, value }) {
           </TouchableOpacity>
         )}
       </View>
-      <View
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        accessibilityLabel={label}
-        accessibilityRole="adjustable"
-        accessibilityValue={{ min, max, now: safeValue, text: `${safeValue} hours` }}
-        onAccessibilityAction={({ nativeEvent }) => adjust(nativeEvent.actionName === 'increment' ? 1 : -1)}
-        onLayout={({ nativeEvent }) => setTrackWidth(nativeEvent.layout.width)}
-        onMoveShouldSetResponder={() => true}
-        onResponderGrant={({ nativeEvent }) => updateFromPosition(nativeEvent.locationX)}
-        onResponderMove={({ nativeEvent }) => updateFromPosition(nativeEvent.locationX)}
-        onStartShouldSetResponder={() => true}
-        style={styles.sliderTouchArea}
-      >
-        <View style={styles.sliderTrack}>
-          <View style={[styles.sliderFill, { width: `${progress}%` }]} />
-          <View
-            style={[
-              styles.sliderThumb,
-              { left: `${progress}%`, borderColor: theme.colors.primary },
-            ]}
-          />
-        </View>
+      <View style={styles.presetGrid}>
+        {availablePresets.map((preset) => {
+          const selected = preset === safeValue;
+          return (
+            <TouchableOpacity
+              accessibilityLabel={`Set ${label.toLowerCase()} to ${preset} hours`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              key={preset}
+              onPress={() => selectPreset(preset)}
+              style={[styles.presetButton, selected && styles.selectedPresetButton]}
+            >
+              <Text style={[styles.presetText, selected && styles.selectedPresetText]}>{preset}h</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-      <View style={styles.sliderRange}>
-        <Text style={styles.rangeText}>{min} hr</Text>
-        <Text style={styles.rangeText}>{max} hr</Text>
+      <View style={styles.stepper}>
+        <TouchableOpacity
+          accessibilityLabel={`Decrease ${label.toLowerCase()}`}
+          accessibilityRole="button"
+          disabled={safeValue <= min}
+          onPress={() => adjust(-1)}
+          style={[styles.stepButton, safeValue <= min && styles.disabledStepButton]}
+        >
+          <Text style={styles.stepButtonText}>−</Text>
+        </TouchableOpacity>
+        <Text style={styles.stepperValue}>Adjust by 1 hour</Text>
+        <TouchableOpacity
+          accessibilityLabel={`Increase ${label.toLowerCase()}`}
+          accessibilityRole="button"
+          disabled={safeValue >= max}
+          onPress={() => adjust(1)}
+          style={[styles.stepButton, safeValue >= max && styles.disabledStepButton]}
+        >
+          <Text style={styles.stepButtonText}>+</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -275,7 +329,7 @@ function createStyles(theme) {
     },
     field: {
       paddingVertical: 16,
-      gap: 10,
+      gap: 14,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border.light,
     },
@@ -286,10 +340,19 @@ function createStyles(theme) {
       justifyContent: 'space-between',
       gap: 12,
     },
+    labelGroup: {
+      flex: 1,
+      gap: 3,
+    },
     label: {
       color: theme.colors.text.primary,
       fontSize: 15,
       fontWeight: '600',
+    },
+    helper: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
+      lineHeight: 17,
     },
     inputRow: {
       flexDirection: 'row',
@@ -338,36 +401,69 @@ function createStyles(theme) {
       color: theme.colors.text.secondary,
       fontSize: 12,
     },
-    sliderTouchArea: {
-      height: 32,
+    presetGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    presetButton: {
+      minWidth: 0,
+      minHeight: 42,
+      flexBasis: '30%',
+      flexGrow: 1,
+      alignItems: 'center',
       justifyContent: 'center',
-    },
-    sliderTrack: {
-      height: 6,
-      backgroundColor: theme.colors.border.light,
-    },
-    sliderFill: {
-      height: '100%',
-      backgroundColor: theme.colors.primary,
-    },
-    sliderThumb: {
-      position: 'absolute',
-      top: -7,
-      width: 20,
-      height: 20,
-      marginLeft: -10,
-      borderWidth: 2,
-      borderRadius: 10,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
       backgroundColor: theme.colors.surface,
     },
-    sliderRange: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: -7,
+    selectedPresetButton: {
+      borderColor: theme.colors.primary,
+      backgroundColor: theme.colors.primary,
     },
-    rangeText: {
-      color: theme.colors.text.light,
-      fontSize: 11,
+    presetText: {
+      color: theme.colors.text.primary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    selectedPresetText: {
+      color: theme.colors.text.inverse,
+    },
+    stepper: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: 1,
+      borderColor: theme.colors.border.light,
+      paddingTop: 12,
+    },
+    stepButton: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.border.medium,
+      borderRadius: 7,
+      backgroundColor: theme.colors.surface,
+    },
+    disabledStepButton: {
+      opacity: 0.35,
+    },
+    stepButtonText: {
+      color: theme.colors.text.primary,
+      fontSize: 24,
+      lineHeight: 26,
+      fontWeight: '500',
+    },
+    stepperValue: {
+      color: theme.colors.text.secondary,
+      fontSize: 12,
     },
     preview: {
       gap: 4,
@@ -380,6 +476,14 @@ function createStyles(theme) {
     previewText: {
       color: theme.colors.text.secondary,
       fontSize: 14,
+      lineHeight: 20,
+    },
+    remainingText: {
+      color: theme.colors.primary,
+      fontFamily: theme.typography.families.utility,
+      fontVariant: ['tabular-nums'],
+      fontSize: 14,
+      fontWeight: '700',
       lineHeight: 20,
     },
     errorText: {
