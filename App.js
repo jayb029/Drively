@@ -2,8 +2,8 @@ import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform } from 'react-native';
-import { StyleSheet, View } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { DrivingProvider } from './src/contexts/DrivingContext';
 import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
@@ -16,6 +16,7 @@ import { downloadOtaUpdateInBackground } from './src/services/otaUpdater';
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [isInPictureInPictureMode, setIsInPictureInPictureMode] = useState(false);
   
   // Initialize logger when app starts
@@ -98,7 +99,12 @@ function AppContent() {
         <ApkUpdateProvider>
           <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <StatusBar style={isDark ? 'light' : 'dark'} hidden={isInPictureInPictureMode} />
-            <View style={styles.content}>
+            {__DEV__ && !isInPictureInPictureMode && (
+              <View style={[styles.developmentBanner, { height: insets.top + 24, paddingTop: insets.top }]}>
+                <Text style={styles.developmentBannerText}>Development Build</Text>
+              </View>
+            )}
+            <View style={[styles.content, __DEV__ && !isInPictureInPictureMode && styles.developmentContent]}>
               <AppNavigator />
             </View>
           </View>
@@ -124,5 +130,24 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  developmentContent: {
+    paddingTop: 24,
+  },
+  developmentBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5B4324',
+  },
+  developmentBannerText: {
+    color: '#FFF7E8',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });
