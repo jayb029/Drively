@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { SettingsButton, SettingsPage, SettingsSection } from '../components/SettingsComponents';
+import { SettingsButton, SettingsChoice, SettingsPage, SettingsSection } from '../components/SettingsComponents';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { logUserAction } from '../utils/logger';
@@ -18,6 +18,7 @@ const LICENSE_LABELS = {
   restricted: 'Restricted license',
   unrestricted: 'Unrestricted license',
 };
+const LICENSE_OPTIONS = Object.entries(LICENSE_LABELS).map(([value, label]) => ({ value, label }));
 
 export default function DriverProfileSettingsScreen({ navigation }) {
   const { setUserInfo, user } = useDriving();
@@ -26,6 +27,7 @@ export default function DriverProfileSettingsScreen({ navigation }) {
   const [driverName, setDriverName] = useState(user.driverName || user.fullName || user.name || '');
   const [dateOfBirth, setDateOfBirth] = useState(formatDateOfBirthInput(user.dateOfBirth || user.birthDate || user.dob || ''));
   const [permitNumber, setPermitNumber] = useState(user.permitNumber || user.licenseNumber || '');
+  const [licenseType, setLicenseType] = useState(user.licenseType || 'learners');
 
   const openDatePicker = () => {
     DateTimePickerAndroid.open({
@@ -44,6 +46,7 @@ export default function DriverProfileSettingsScreen({ navigation }) {
       driverName: driverName.trim(),
       dateOfBirth: dateOfBirth.trim(),
       permitNumber: permitNumber.trim(),
+      licenseType,
     });
     logUserAction('update_driver_info', 'SETTINGS');
     Alert.alert('Driver information saved', 'Future exports will use these details.');
@@ -56,11 +59,13 @@ export default function DriverProfileSettingsScreen({ navigation }) {
       subtitle="These details appear on official logbook exports."
     >
       <SettingsSection title="License">
-        <View style={styles.readOnlyRow}>
-          <Text style={styles.label}>License type</Text>
-          <Text style={styles.value}>{LICENSE_LABELS[user.licenseType] || 'Not set'}</Text>
-        </View>
-        <Text style={styles.note}>Resetting app data and completing onboarding again is required to change the license type.</Text>
+        <SettingsChoice
+          label="License type"
+          onChange={setLicenseType}
+          options={LICENSE_OPTIONS}
+          value={licenseType}
+        />
+        <Text style={styles.note}>This changes whether Drively requires supervisor information on new drive logs.</Text>
       </SettingsSection>
 
       <SettingsSection title="Export details">
@@ -130,8 +135,6 @@ function createStyles(theme) {
     },
     dateText: { flex: 1, color: theme.colors.text.primary, fontSize: 15 },
     placeholder: { color: theme.colors.text.light },
-    readOnlyRow: { padding: 14, flexDirection: 'row', justifyContent: 'space-between', gap: 16 },
-    value: { color: theme.colors.text.secondary, fontSize: 14 },
     note: { color: theme.colors.text.secondary, fontSize: 12, lineHeight: 17, paddingHorizontal: 14, paddingBottom: 14 },
   });
 }
