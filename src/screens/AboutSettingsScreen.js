@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Linking, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
 import {
   SettingsActionRow,
@@ -89,6 +89,16 @@ export default function AboutSettingsScreen({ navigation }) {
       <SettingsSection title="Services">
         <SettingsActionRow label="Weather data" subtitle="Fetched directly from Open-Meteo only when weather lookup is enabled." />
         <SettingsActionRow label="Logbook data" subtitle="Stored locally unless you choose to export it." />
+      </SettingsSection>
+
+      <SettingsSection title="Project">
+        <View style={{ padding: 14 }}>
+          <SettingsButton
+            label="View Drively on GitHub"
+            onPress={() => Linking.openURL('https://github.com/jayb029/Drively')}
+            secondary
+          />
+        </View>
       </SettingsSection>
     </SettingsPage>
   );
