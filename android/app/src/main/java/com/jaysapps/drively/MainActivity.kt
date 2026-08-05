@@ -119,6 +119,18 @@ class MainActivity : ReactActivity() {
     super.onUserLeaveHint()
   }
 
+  override fun onPictureInPictureRequested(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !driveTrackingActive) {
+      return super.onPictureInPictureRequested()
+    }
+
+    // This callback runs before Android captures the activity for the PiP
+    // transition. Release builds can skip or delay onUserLeaveHint, so prepare
+    // the native compact view here as well.
+    setPipOverlayVisible(true)
+    return enterDrivePictureInPicture()
+  }
+
   override fun onResume() {
     super.onResume()
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !isInPictureInPictureMode) {
