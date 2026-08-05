@@ -9,7 +9,16 @@ import {
   SettingsSection,
 } from '../components/SettingsComponents';
 import { useTheme } from '../contexts/ThemeContext';
-import { cleanupOldLogs, clearLogs, exportLogs, getAllLogs, getLogStats } from '../utils/logger';
+import { cleanupOldLogs, clearLogs, exportLogs, getAllLogs, getLogStats, getRecentLogs } from '../utils/logger';
+
+function summarizeLogLine(line) {
+  if (!line) return null;
+  const summary = line
+    .replace(/^\S+ \[ERROR\] /, '')
+    .replace(/ \| Data:.*$/, '')
+    .trim();
+  return summary.length > 240 ? `${summary.slice(0, 237)}…` : summary;
+}
 
 export default function DiagnosticsSettingsScreen({ navigation }) {
   const { theme } = useTheme();
@@ -19,12 +28,14 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [recentError, setRecentError] = useState(null);
 
   const refreshHealth = async () => {
     setLoading(true);
     try {
-      const nextStats = await getLogStats();
+      const [nextStats, recentErrors] = await Promise.all([getLogStats(), getRecentLogs(1, 'ERROR')]);
       setStats(nextStats);
+      setRecentError(summarizeLogLine(recentErrors[0]));
     } catch (error) {
       Alert.alert('Diagnostics unavailable', 'Could not read the local debug log.');
     } finally {
@@ -108,7 +119,7 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
         ? {
             icon: 'alert-circle-outline',
             title: `${errorCount} ${errorCount === 1 ? 'problem was' : 'problems were'} detected`,
-            detail: 'Drively recorded an app error. Advanced diagnostics has more detail.',
+            detail: recentError || 'Drively recorded an app error. Advanced diagnostics has more detail.',
             color: theme.colors.error,
           }
         : warningCount > 0
