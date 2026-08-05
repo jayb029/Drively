@@ -18,9 +18,11 @@ export default function DashboardScreen({ navigation }) {
 
   const { totalMinutes, nightMinutes } = sumDriveMinutes(drives);
   const totalGoalMinutes = Math.max(1, Number(user.goalDayHours) * 60);
-  const nightGoalMinutes = Math.max(1, Number(user.goalNightHours) * 60);
+  const nightGoalMinutes = Math.max(0, Number(user.goalNightHours) * 60);
   const totalPercent = Math.min(100, Math.round((totalMinutes / totalGoalMinutes) * 100));
-  const nightPercent = Math.min(100, Math.round((nightMinutes / nightGoalMinutes) * 100));
+  const nightPercent = nightGoalMinutes > 0
+    ? Math.min(100, Math.round((nightMinutes / nightGoalMinutes) * 100))
+    : 100;
   const detectedOpen = detectedEvents.filter((event) => event.status === 'new').length;
   const recentDrives = [...drives].slice(-4).reverse();
 
@@ -69,15 +71,17 @@ export default function DashboardScreen({ navigation }) {
             styles={styles}
             theme={theme}
           />
-          <ProgressLine
-            label="Night"
-            minutes={nightMinutes}
-            goalMinutes={nightGoalMinutes}
-            progress={nightPercent}
-            styles={styles}
-            theme={theme}
-            night
-          />
+          {nightMinutes > 0 && (
+            <ProgressLine
+              label="Night"
+              minutes={nightMinutes}
+              goalMinutes={nightGoalMinutes}
+              progress={nightPercent}
+              styles={styles}
+              theme={theme}
+              night
+            />
+          )}
         </View>
 
         <TouchableOpacity
@@ -167,7 +171,9 @@ function ProgressLine({ goalMinutes, label, minutes, night, progress, styles, th
     <View style={styles.progressRow}>
       <View style={styles.progressCopy}>
         <Text style={styles.progressLabel}>{label}</Text>
-        <Text style={styles.progressValue}>{formatDuration(minutes)} / {formatDuration(goalMinutes)}</Text>
+        <Text style={styles.progressValue}>
+          {formatDuration(minutes)}{goalMinutes > 0 ? ` / ${formatDuration(goalMinutes)}` : ''}
+        </Text>
       </View>
       <View style={styles.progressTrack}>
         <View
