@@ -31,6 +31,7 @@ import {
   getCurrentDate,
   getCurrentTime,
   getTimeFromDate,
+  isNightTime,
   isValidDateOfBirth,
 } from '../utils/time';
 import {
@@ -174,6 +175,9 @@ export default function LogDriveScreen({ navigation }) {
   const [supervisorDateOfBirth, setSupervisorDateOfBirth] = useState('');
   const [supervisorLicense, setSupervisorLicense] = useState('');
   const [destination, setDestination] = useState('Practice route');
+  const [drivePeriod, setDrivePeriod] = useState(() => (
+    isNightTime(getCurrentTime(), settings.nightTimeStart, settings.nightTimeEnd) ? 'Night' : 'Day'
+  ));
   const [weather, setWeather] = useState('');
   const [weatherData, setWeatherData] = useState(null);
   const [skills, setSkills] = useState([]);
@@ -484,6 +488,7 @@ export default function LogDriveScreen({ navigation }) {
     setMaxSpeed(0);
     setRoutePoints([]);
     setSkills([]);
+    setDrivePeriod(isNightTime(getCurrentTime(), settings.nightTimeStart, settings.nightTimeEnd) ? 'Night' : 'Day');
     setSourceEventId(null);
     setIsActive(false);
     setIsPaused(false);
@@ -530,6 +535,7 @@ export default function LogDriveScreen({ navigation }) {
       const segmentStartTime = getTimeFromDate(segment.startTimestamp);
       const segmentEndTime = getTimeFromDate(segment.endTimestamp);
       const segmentSplit = calculateNightDrivingSplit({
+        debugOverride: drivePeriod.toLowerCase(),
         durationMinutes: Math.max(1, Math.round(segmentDurationMs / 60000)),
         endTimestamp: segment.endTimestamp,
         method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
@@ -539,6 +545,7 @@ export default function LogDriveScreen({ navigation }) {
         startTimestamp: segment.startTimestamp,
       });
       const classificationSegments = calculateNightDrivingSegments({
+        debugOverride: drivePeriod.toLowerCase(),
         endTimestamp: segment.endTimestamp,
         method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
         nightEnd: settings.nightTimeEnd,
@@ -635,6 +642,7 @@ export default function LogDriveScreen({ navigation }) {
           routePoints: finalRoutePoints,
         }];
         const segmentSplits = activeSegments.map((segment) => calculateNightDrivingSplit({
+          debugOverride: drivePeriod.toLowerCase(),
           durationMinutes: Math.max(1, Math.round((segment.endTimestamp - segment.startTimestamp) / 60000)),
           endTimestamp: segment.endTimestamp,
           method: settings.nightDrivingMethod || NIGHT_DRIVING_METHODS.CIVIL_TWILIGHT,
@@ -1076,6 +1084,9 @@ export default function LogDriveScreen({ navigation }) {
         </Section>
 
         <Section title="Drive Details" styles={styles}>
+          <Text style={styles.fieldLabel}>Driving period</Text>
+          <ChoiceList value={drivePeriod} values={['Day', 'Night']} onChange={setDrivePeriod} styles={styles} />
+          <Text style={styles.fieldLabel}>Destination</Text>
           <ChoiceList value={destination} values={DESTINATIONS} onChange={setDestination} styles={styles} />
           <Text style={styles.fieldLabel}>Weather</Text>
           <ChoiceList value={weather} values={WEATHER_OPTIONS} onChange={setWeather} styles={styles} />
