@@ -10,6 +10,8 @@ export const ACTIVE_DRIVE_TRACKING_TASK = 'drively-active-drive-tracking-v1';
 const ACTIVE_DRIVE_STATE_KEY = 'drively.activeDrive.state.v1';
 const ACTIVE_DRIVE_EVENT = 'DrivelyActiveDriveLocation';
 const TRACKING_PERSIST_INTERVAL_MS = 15000;
+const LOW_SPEED_CONFIRMATION_KMH = 4;
+const LOW_SPEED_FLOOR_KMH = 0.8;
 
 const ACTIVE_DRIVE_LOCATION_OPTIONS = {
   accuracy: Location.Accuracy.BestForNavigation,
@@ -103,14 +105,35 @@ function toPoint(location) {
   };
 }
 
-function getSpeedKmh(point, previousPoint) {
-  if (typeof point.speed === 'number' && point.speed >= 0) {
-    return point.speed * 3.6;
-  }
-
+function getRawSpeedKmh(point, previousPoint) {
+  if (typeof point.speed === 'number' && point.speed >= 0) return point.speed * 3.6;
   if (!previousPoint) return 0;
   const seconds = Math.max(1, (point.timestamp - previousPoint.timestamp) / 1000);
   return (distanceMeters(previousPoint, point) / seconds) * 3.6;
+}
+
+function getFilteredSpeed(point, previousPoint, previousLowSpeedSampleCount = 0) {
+  const rawSpeedKmh = getRawSpeedKmh(point, previousPoint);
+  if (rawSpeedKmh < LOW_SPEED_FLOOR_KMH) {
+    return { speedKmh: 0, lowSpeedSampleCount: 0 };
+  }
+  if (rawSpeedKmh >= LOW_SPEED_CONFIRMATION_KMH) {
+    return { speedKmh: rawSpeedKmh, lowSpeedSampleCount: 0 };
+  }
+  if (!previousPoint || (point.accuracy && point.accuracy > 35)) {
+    return { speedKmh: 0, lowSpeedSampleCount: 0 };
+  }
+
+  const seconds = Math.max(1, (point.timestamp - previousPoint.timestamp) / 1000);
+  const displacement = distanceMeters(previousPoint, point);
+  const expectedDisplacement = (rawSpeedKmh / 3.6) * seconds;
+  const movementLooksReal = displacement >= Math.max(1.25, expectedDisplacement * 0.45);
+  const lowSpeedSampleCount = movementLooksReal ? previousLowSpeedSampleCount + 1 : 0;
+
+  return {
+    speedKmh: lowSpeedSampleCount >= 2 ? rawSpeedKmh : 0,
+    lowSpeedSampleCount,
+  };
 }
 
 async function getTrackingState() {
@@ -185,7 +208,11 @@ async function handleLocationBatch(locations) {
     const point = toPoint(location);
     const currentSegment = state.currentSegment;
     const previous = currentSegment.lastPoint;
-    const speedKmh = getSpeedKmh(point, previous);
+    const { speedKmh, lowSpeedSampleCount } = getFilteredSpeed(
+      point,
+      previous,
+      state.lowSpeedSampleCount || 0
+    );
     let nextDistance = state.distance || 0;
 
     if (previous && (!point.accuracy || point.accuracy <= 80)) {
@@ -199,6 +226,7 @@ async function handleLocationBatch(locations) {
       ...state,
       distance: nextDistance,
       currentSpeed: Math.max(0, speedKmh),
+      lowSpeedSampleCount,
       maxSpeed: Math.max(state.maxSpeed || 0, speedKmh),
       lastPoint: point,
       routePoints: [...(state.routePoints || []).slice(-199), point],
@@ -262,6 +290,7 @@ export async function startActiveDriveTracking({ startTimestamp, distanceUnit })
     distanceUnit,
     distance: 0,
     currentSpeed: 0,
+    lowSpeedSampleCount: 0,
     maxSpeed: 0,
     routePoints: [],
     lastPoint: null,
@@ -302,6 +331,7 @@ export async function resumeActiveDriveTracking() {
     ...state,
     paused: false,
     currentSpeed: 0,
+    lowSpeedSampleCount: 0,
     lastPoint: null,
     currentSegment: createTrackingSegment(Date.now()),
   };

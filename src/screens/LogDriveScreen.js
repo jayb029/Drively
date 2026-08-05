@@ -190,6 +190,7 @@ export default function LogDriveScreen({ navigation }) {
   const lastPointRef = useRef(null);
   const keepAwakeActiveRef = useRef(false);
   const elapsedClockRef = useRef(createElapsedClock());
+  const lowSpeedSampleCountRef = useRef(0);
 
   const latestDetectedEvent = detectedEvents?.find((event) => event.status === 'new');
   const latestDetectionStartTimestamp = getDetectionStartTimestamp(latestDetectedEvent);
@@ -362,11 +363,26 @@ export default function LogDriveScreen({ navigation }) {
       speed: location.coords.speed,
     };
     const previous = lastPointRef.current;
-    const speedKmh = typeof point.speed === 'number' && point.speed >= 0
+    const rawSpeedKmh = typeof point.speed === 'number' && point.speed >= 0
       ? point.speed * 3.6
       : previous
         ? (distanceMeters(previous, point) / Math.max(1, (point.timestamp - previous.timestamp) / 1000)) * 3.6
         : 0;
+    const seconds = previous ? Math.max(1, (point.timestamp - previous.timestamp) / 1000) : 1;
+    const displacement = previous ? distanceMeters(previous, point) : 0;
+    const lowSpeedMovementLooksReal = previous
+      && (!point.accuracy || point.accuracy <= 35)
+      && displacement >= Math.max(1.25, ((rawSpeedKmh / 3.6) * seconds) * 0.45);
+    if (rawSpeedKmh < 0.8 || rawSpeedKmh >= 4) {
+      lowSpeedSampleCountRef.current = 0;
+    } else {
+      lowSpeedSampleCountRef.current = lowSpeedMovementLooksReal
+        ? lowSpeedSampleCountRef.current + 1
+        : 0;
+    }
+    const speedKmh = rawSpeedKmh >= 4 || (rawSpeedKmh >= 0.8 && lowSpeedSampleCountRef.current >= 2)
+      ? rawSpeedKmh
+      : 0;
 
     if (previous && (!point.accuracy || point.accuracy <= 80)) {
       const segment = distanceMeters(previous, point);
@@ -433,6 +449,7 @@ export default function LogDriveScreen({ navigation }) {
     setSegmentCount(1);
     setIsPaused(false);
     lastPointRef.current = null;
+    lowSpeedSampleCountRef.current = 0;
     try {
       await startActiveDriveTracking({
         startTimestamp: nextStartTimestamp,
@@ -476,6 +493,7 @@ export default function LogDriveScreen({ navigation }) {
     clearActiveDriveTracking();
     setSupervisorDateOfBirth('');
     lastPointRef.current = null;
+    lowSpeedSampleCountRef.current = 0;
   };
 
   const buildDriveRecord = ({
