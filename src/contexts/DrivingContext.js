@@ -69,6 +69,7 @@ const initialState = {
     distanceUnit: 'metric',
     censorSensitiveInfo: true,
     alwaysOnWhileTracking: true,
+    largeBottomNavIcons: true,
     driveDetectionEnabled: false,
     driveDetectionSensitivity: 'balanced',
     notificationPermissionStatus: null,

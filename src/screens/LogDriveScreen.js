@@ -58,15 +58,15 @@ import {
   stopActiveDriveTracking,
 } from '../services/activeDriveTracking';
 
-function getDefaultTabBarStyle(theme, bottomInset) {
+function getDefaultTabBarStyle(theme, bottomInset, largeIcons) {
   const tabBarBottomInset = Math.max(bottomInset, 8);
   return {
     backgroundColor: theme.colors.surface,
     borderTopColor: theme.colors.border.light,
     borderTopWidth: 1,
     paddingBottom: tabBarBottomInset,
-    paddingTop: 7,
-    height: 56 + tabBarBottomInset,
+    paddingTop: largeIcons ? 5 : 7,
+    height: (largeIcons ? 58 : 56) + tabBarBottomInset,
     elevation: 0,
   };
 }
@@ -159,6 +159,7 @@ export default function LogDriveScreen({ navigation }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   const distanceUnit = settings.distanceUnit || 'metric';
   const alwaysOnWhileTracking = settings.alwaysOnWhileTracking ?? true;
+  const largeBottomNavIcons = settings.largeBottomNavIcons ?? true;
 
   const [date, setDate] = useState(getCurrentDate());
   const [startTime, setStartTime] = useState(null);
@@ -288,9 +289,9 @@ export default function LogDriveScreen({ navigation }) {
     navigation.setOptions({
       tabBarStyle: isActive || isInPictureInPictureMode
         ? styles.hiddenTabBar
-        : getDefaultTabBarStyle(theme, insets.bottom),
+        : getDefaultTabBarStyle(theme, insets.bottom, largeBottomNavIcons),
     });
-  }, [insets.bottom, isActive, isInPictureInPictureMode, navigation, styles, theme]);
+  }, [insets.bottom, isActive, isInPictureInPictureMode, largeBottomNavIcons, navigation, styles, theme]);
 
   useEffect(() => {
     let cancelled = false;

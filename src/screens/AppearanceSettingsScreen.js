@@ -63,6 +63,23 @@ export default function AppearanceSettingsScreen({ navigation }) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Navigation</Text>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text style={styles.settingTitle}>Large icon-only navigation</Text>
+              <Text style={styles.settingBody}>Show larger bottom-bar icons without text labels.</Text>
+            </View>
+            <Switch
+              accessibilityLabel="Large icon-only navigation"
+              onValueChange={(value) => updateSettings({ largeBottomNavIcons: value })}
+              thumbColor={(settings.largeBottomNavIcons ?? true) ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
+              trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+              value={settings.largeBottomNavIcons ?? true}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Privacy</Text>
           <View style={styles.settingRow}>
             <View style={styles.settingCopy}>

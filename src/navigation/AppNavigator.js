@@ -34,15 +34,15 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 // Tab icon component
-function TabIcon({ children, focused, theme }) {
+function TabIcon({ children, focused, large, theme }) {
   return (
     <View style={{
       alignItems: 'center',
       justifyContent: 'center',
-      width: 28,
-      height: 28,
+      width: large ? 38 : 28,
+      height: large ? 38 : 28,
     }}>
-      <Icon name={children} size={21} color={focused ? theme.colors.primary : theme.colors.text.light} />
+      <Icon name={children} size={large ? 29 : 21} color={focused ? theme.colors.primary : theme.colors.text.light} />
     </View>
   );
 }
@@ -50,8 +50,10 @@ function TabIcon({ children, focused, theme }) {
 // Main tab navigator
 function MainTabs() {
   const { theme } = useTheme();
+  const { settings } = useDriving();
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, 8);
+  const largeBottomNavIcons = settings.largeBottomNavIcons ?? true;
   
   return (
     <Tab.Navigator
@@ -77,8 +79,9 @@ function MainTabs() {
               iconName = 'circle-small';
           }
           
-          return <TabIcon focused={focused} theme={theme}>{iconName}</TabIcon>;
+          return <TabIcon focused={focused} large={largeBottomNavIcons} theme={theme}>{iconName}</TabIcon>;
         },
+        tabBarShowLabel: !largeBottomNavIcons,
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.text.light,
         tabBarStyle: {
@@ -86,8 +89,8 @@ function MainTabs() {
           borderTopColor: theme.colors.border.light,
           borderTopWidth: 1,
           paddingBottom: tabBarBottomInset,
-          paddingTop: 7,
-          height: 56 + tabBarBottomInset,
+          paddingTop: largeBottomNavIcons ? 5 : 7,
+          height: (largeBottomNavIcons ? 58 : 56) + tabBarBottomInset,
           elevation: 0,
         },
         tabBarLabelStyle: {
