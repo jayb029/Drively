@@ -17,7 +17,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: expo-ota-${{ inputs.channel }}
@@ -66,12 +66,61 @@ jobs:
         env:
           UPDATE_CHANNEL: ${{ inputs.channel }}
           UPDATE_MESSAGE: ${{ inputs.message }}
-        run: >-
-          eas update
-          --channel "$UPDATE_CHANNEL"
-          --platform android
-          --message "$UPDATE_MESSAGE"
-          --non-interactive
+        run: |
+          eas update \
+            --channel "$UPDATE_CHANNEL" \
+            --platform android \
+            --message "$UPDATE_MESSAGE" \
+            --json \
+            --non-interactive \
+            > "$RUNNER_TEMP/eas-update.json"
+
+          jq empty "$RUNNER_TEMP/eas-update.json"
+
+      - name: Register OTA update on the matching GitHub release
+        id: github_release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_CHANNEL: ${{ inputs.channel }}
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        run: |
+          VERSION_NAME="$(node -p "require('./package.json').version")"
+          TAG_NAME="v${VERSION_NAME}"
+          ASSET_NAME="Drively-v${VERSION_NAME}-ota-${UPDATE_CHANNEL}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}.json"
+          ASSET_PATH="$RUNNER_TEMP/$ASSET_NAME"
+
+          if ! gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub release $TAG_NAME does not exist. Publish the matching APK release before its OTA update."
+            exit 1
+          fi
+
+          jq \
+            --arg version "$VERSION_NAME" \
+            --arg channel "$UPDATE_CHANNEL" \
+            --arg message "$UPDATE_MESSAGE" \
+            --arg commit "$GITHUB_SHA" \
+            --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg workflow_run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{
+              schemaVersion: 1,
+              version: $version,
+              channel: $channel,
+              message: $message,
+              commit: $commit,
+              publishedAt: $published_at,
+              workflowRun: $workflow_run,
+              eas: .
+            }' \
+            "$RUNNER_TEMP/eas-update.json" \
+            > "$ASSET_PATH"
+
+          gh release upload "$TAG_NAME" "$ASSET_PATH#$ASSET_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Write job summary
         env:
@@ -84,4 +133,6 @@ jobs:
             echo "- Channel: \`$UPDATE_CHANNEL\`"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Message: $UPDATE_MESSAGE"
+            echo "- GitHub release: \`${{ steps.github_release.outputs.tag_name }}\`"
+            echo "- Metadata asset: \`${{ steps.github_release.outputs.asset_name }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
