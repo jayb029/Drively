@@ -27,7 +27,6 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 import androidx.appcompat.app.AppCompatDelegate
 import expo.modules.ReactActivityDelegateWrapper
-import com.swmansion.rnscreens.fragment.restoration.RNScreensFragmentFactory
 import java.util.Locale
 
 class MainActivity : ReactActivity() {
@@ -52,7 +51,6 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    supportFragmentManager.fragmentFactory = RNScreensFragmentFactory()
     AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 
     // Set the theme to AppTheme BEFORE onCreate to support
@@ -60,20 +58,6 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      // ReactActivity's legacy callback otherwise consumes back before the
-      // native screen stack can participate in Android's predictive gesture.
-      // react-native-screens owns route pops after this callback is disabled.
-      try {
-        val field = ReactActivity::class.java.getDeclaredField("mBackPressedCallback")
-        field.isAccessible = true
-        val callback = field.get(this) as androidx.activity.OnBackPressedCallback
-        callback.isEnabled = false
-      } catch (error: Exception) {
-        Log.w(TAG, "Unable to enable predictive back navigation.", error)
-      }
-    }
     installPipOverlay()
   }
 
