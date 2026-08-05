@@ -1,0 +1,99 @@
+name: Bug report
+description: Report a reproducible problem with Drively.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Drively. Search existing issues before submitting a new report.
+
+        Do not include driving records, precise locations, signatures, credentials, or other sensitive information. Report security vulnerabilities privately through the repository's Security policy.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+      placeholder: Tell us what went wrong and what the correct behavior should be.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence that triggers the problem.
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Drively version
+      description: Find this under Settings, then About and updates.
+      placeholder: "2.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: Pixel 9, Android 16
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: Installation type
+      options:
+        - GitHub Release APK
+        - EAS preview build
+        - Local development build
+        - Other or unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this happen?
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Once
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Add sanitized logs, screenshots, or a screen recording if they help explain the issue.
+      placeholder: Remove personal driving data and precise location information before attaching anything.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include relevant settings, permissions, recent upgrades, or workarounds.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed personal, location, and other sensitive information.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

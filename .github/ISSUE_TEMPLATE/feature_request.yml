@@ -1,0 +1,72 @@
+name: Feature request
+description: Suggest an improvement or new capability for Drively.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea. Search existing issues first and focus the request on the problem Drively should solve.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain the situation, limitation, or workflow that prompted this request.
+      placeholder: When I am trying to ..., I cannot ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe how you would like Drively to handle the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Share any current workaround or other approach you considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area of the app
+      options:
+        - Drive tracking
+        - Logbook and manual entries
+        - Goals and progress
+        - Exports, backup, or restore
+        - Settings and appearance
+        - Accessibility
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: data-impact
+    attributes:
+      label: Data, permissions, or privacy impact
+      description: Note whether the idea needs new stored data, permissions, network access, cloud services, or native Android changes. Write "None" if it does not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add sanitized examples, sketches, or screenshots if useful.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for a similar request.
+          required: true
+        - label: I have not included personal driving data or other sensitive information.
+          required: true
