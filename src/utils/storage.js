@@ -455,6 +455,28 @@ export async function importDataFromJSON(jsonString) {
   }
 }
 
+export function mergeImportedData(currentData, importedData, categories) {
+  const importLogbook = categories.logbook === true;
+  const merged = {
+    ...currentData,
+    user: categories.driver === true ? importedData.user : currentData.user,
+    supervisorProfiles: categories.supervisors === true
+      ? importedData.supervisorProfiles
+      : currentData.supervisorProfiles,
+    drives: importLogbook ? importedData.drives : currentData.drives,
+    detectedEvents: importLogbook ? importedData.detectedEvents : currentData.detectedEvents,
+    streaks: importLogbook ? importedData.streaks : currentData.streaks,
+    settings: categories.settings === true
+      ? {
+          ...importedData.settings,
+          cloudBackupEnabled: !!currentData.settings?.cloudBackupEnabled,
+        }
+      : currentData.settings,
+  };
+
+  return migrateData(merged);
+}
+
 /**
  * Export drives data as CSV string
  */

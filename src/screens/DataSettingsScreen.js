@@ -1,20 +1,40 @@
 import React, { useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import {
   SettingsActionRow,
+  SettingsButton,
   SettingsPage,
   SettingsSection,
   SettingsSwitchRow,
 } from '../components/SettingsComponents';
 import { useDriving } from '../contexts/DrivingContext';
-import { clearAllData, importDataFromJSON } from '../utils/storage';
+import { clearAllData, importDataFromJSON, mergeImportedData } from '../utils/storage';
 import { logUserAction } from '../utils/logger';
 
 export default function DataSettingsScreen({ navigation }) {
-  const { replaceData, resetData, setCloudBackupEnabled, settings, updateSettings } = useDriving();
+  const driving = useDriving();
+  const {
+    detectedEvents,
+    drives,
+    replaceData,
+    resetData,
+    setCloudBackupEnabled,
+    settings,
+    streaks,
+    supervisorProfiles,
+    updateSettings,
+    user,
+  } = driving;
   const [changingCloudBackup, setChangingCloudBackup] = useState(false);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [importCategories, setImportCategories] = useState({
+    driver: true,
+    logbook: true,
+    supervisors: true,
+    settings: true,
+  });
 
   const changeCloudBackup = async (enabled) => {
     setChangingCloudBackup(true);
@@ -57,26 +77,27 @@ export default function DataSettingsScreen({ navigation }) {
         return;
       }
 
-      Alert.alert('Import backup', 'This replaces the current local Drively data with the selected backup.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Import',
-          onPress: () => {
-            replaceData({
-              ...importedData,
-              settings: {
-                ...importedData.settings,
-                cloudBackupEnabled: !!settings.cloudBackupEnabled,
-              },
-            });
-            logUserAction('import_json_backup', 'SETTINGS', { drivesCount: importedData.drives?.length || 0 });
-            Alert.alert('Backup imported', 'Your Drively backup has been restored.');
-          },
-        },
-      ]);
+      setPendingImport(importedData);
     } catch (error) {
       Alert.alert('Import failed', 'Unable to import that backup file.');
     }
+  };
+
+  const toggleImportCategory = (category) => (enabled) => {
+    setImportCategories((current) => ({ ...current, [category]: enabled }));
+  };
+
+  const applyImport = () => {
+    if (!pendingImport || !Object.values(importCategories).some(Boolean)) {
+      Alert.alert('Choose data to import', 'Select at least one category from the backup.');
+      return;
+    }
+
+    const currentData = { detectedEvents, drives, settings, streaks, supervisorProfiles, user };
+    replaceData(mergeImportedData(currentData, pendingImport, importCategories));
+    logUserAction('import_json_backup', 'SETTINGS', { categories: importCategories });
+    setPendingImport(null);
+    Alert.alert('Backup imported', 'The selected categories were replaced from your backup.');
   };
 
   const resetAllData = () => {
@@ -123,6 +144,16 @@ export default function DataSettingsScreen({ navigation }) {
         <SettingsActionRow label="Import backup" onPress={importBackup} subtitle="Restore a Drively JSON backup." />
       </SettingsSection>
 
+      {pendingImport && (
+        <SettingsSection title="Choose what to replace">
+          <SettingsSwitchRow label="Driver profile and goals" onValueChange={toggleImportCategory('driver')} value={importCategories.driver} />
+          <SettingsSwitchRow label="Drive log, detections, and streaks" onValueChange={toggleImportCategory('logbook')} value={importCategories.logbook} />
+          <SettingsSwitchRow label="Supervisor profiles" onValueChange={toggleImportCategory('supervisors')} value={importCategories.supervisors} />
+          <SettingsSwitchRow label="App settings" onValueChange={toggleImportCategory('settings')} value={importCategories.settings} />
+          <ImportActions onCancel={() => setPendingImport(null)} onImport={applyImport} />
+        </SettingsSection>
+      )}
+
       <SettingsSection title="Storage">
         <SettingsActionRow
           label="Logbook storage"
@@ -134,5 +165,14 @@ export default function DataSettingsScreen({ navigation }) {
         <SettingsActionRow danger label="Reset all data" onPress={resetAllData} subtitle="Permanently delete local Drively data." />
       </SettingsSection>
     </SettingsPage>
+  );
+}
+
+function ImportActions({ onCancel, onImport }) {
+  return (
+    <View style={{ gap: 10, padding: 14 }}>
+      <SettingsButton label="Import selected data" onPress={onImport} />
+      <SettingsButton label="Cancel import" onPress={onCancel} secondary />
+    </View>
   );
 }
