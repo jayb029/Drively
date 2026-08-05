@@ -1,0 +1,121 @@
+:root {
+  color: #202521;
+  background: #f2f3ee;
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --green: #355e4c;
+  --green-dark: #274638;
+  --amber: #c97826;
+  --paper: #ffffff;
+  --canvas: #f2f3ee;
+  --ink: #202521;
+  --muted: #5f675f;
+  --border: #c4c9c0;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; }
+a { color: inherit; }
+a:focus-visible, button:focus-visible { outline: 3px solid #c97826; outline-offset: 3px; }
+
+.site-header {
+  width: min(1120px, calc(100% - 40px));
+  height: 72px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; }
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+nav { display: flex; gap: 24px; }
+nav a, footer a { color: var(--muted); font-size: 14px; text-decoration: none; }
+nav a:hover, footer a:hover { color: var(--ink); }
+
+.hero {
+  width: min(1120px, calc(100% - 40px));
+  min-height: 590px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.82fr);
+  align-items: center;
+  gap: 88px;
+  padding: 80px 0 96px;
+}
+
+.hero-copy { max-width: 590px; }
+h1, h2, h3 { font-family: "Avenir Next Condensed", "Helvetica Neue", sans-serif; color: var(--ink); margin: 0; }
+h1 { max-width: 560px; font-size: clamp(48px, 6.5vw, 76px); line-height: 0.98; letter-spacing: -2.4px; }
+.hero-copy > p { max-width: 540px; margin: 28px 0 0; color: var(--muted); font-size: 18px; line-height: 1.6; }
+.hero-actions { display: flex; gap: 12px; margin-top: 34px; }
+.button { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border: 1px solid var(--green); border-radius: 8px; font-size: 15px; font-weight: 700; text-decoration: none; transition: background-color 150ms ease, color 150ms ease; }
+.button.primary { color: #fff; background: var(--green); }
+.button.primary:hover { background: var(--green-dark); }
+.button.secondary { color: var(--green); background: transparent; }
+.button.secondary:hover { background: #e5e9e2; }
+.hero-copy .release-note { margin-top: 12px; font-size: 13px; }
+
+.logbook-preview { border: 1px solid #929a91; border-radius: 10px; background: var(--paper); overflow: hidden; }
+.preview-topline { display: flex; justify-content: space-between; align-items: baseline; padding: 24px 24px 14px; color: var(--muted); }
+.preview-topline strong { color: var(--ink); font-family: "Avenir Next Condensed", sans-serif; font-size: 30px; }
+.progress-rule { height: 7px; margin: 0 24px 22px; background: #dde0d8; }
+.progress-rule span { display: block; width: 73%; height: 100%; background: var(--green); }
+.preview-row { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #dde0d8; border-bottom: 1px solid #dde0d8; }
+.preview-row div { padding: 18px 24px; }
+.preview-row div + div { border-left: 1px solid #dde0d8; }
+.preview-row strong, .preview-row span { display: block; }
+.preview-row strong { font-family: "Avenir Next Condensed", sans-serif; font-size: 21px; }
+.preview-row span { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.drive-entry { display: grid; grid-template-columns: 64px 1fr auto; gap: 16px; padding: 16px 24px; align-items: center; }
+.drive-entry + .drive-entry { border-top: 1px solid #eef0eb; }
+.drive-entry time { color: var(--muted); font-size: 13px; }
+.drive-entry span { font-size: 14px; }
+.drive-entry strong { color: var(--green); font-family: "Avenir Next Condensed", sans-serif; font-size: 16px; }
+
+.features { background: #fff; border-top: 1px solid #dde0d8; border-bottom: 1px solid #dde0d8; padding: 76px max(20px, calc((100vw - 1120px) / 2)); }
+h2 { font-size: clamp(30px, 4vw, 42px); letter-spacing: -0.8px; }
+.feature-list { margin-top: 36px; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); }
+.feature-list article { padding: 28px 30px 0 0; }
+.feature-list article + article { padding-left: 30px; border-left: 1px solid var(--border); }
+h3 { font-size: 21px; }
+.feature-list p, .privacy p, .privacy li { color: var(--muted); font-size: 15px; line-height: 1.65; }
+
+.privacy { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 80px 0; display: grid; grid-template-columns: 1fr 0.8fr; gap: 100px; }
+.privacy p { max-width: 600px; margin: 18px 0 0; }
+.privacy ul { margin: 6px 0 0; padding-left: 20px; }
+.privacy li + li { margin-top: 10px; }
+
+footer { width: min(1120px, calc(100% - 40px)); min-height: 78px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+footer div { display: flex; gap: 20px; }
+
+@media (max-width: 760px) {
+  nav a:not(:last-child) { display: none; }
+  .hero { min-height: 0; grid-template-columns: 1fr; gap: 48px; padding: 56px 0 72px; }
+  h1 { font-size: clamp(46px, 15vw, 64px); }
+  .hero-copy > p { font-size: 16px; }
+  .feature-list { grid-template-columns: 1fr; }
+  .feature-list article, .feature-list article + article { padding: 24px 0; border-left: 0; border-bottom: 1px solid var(--border); }
+  .privacy { grid-template-columns: 1fr; gap: 28px; padding: 60px 0; }
+  footer { padding: 24px 0; align-items: flex-start; flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .button { transition: none; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { color: #f2f3ee; background: #151815; --canvas: #151815; --paper: #202420; --ink: #f2f3ee; --muted: #b3b9b1; --border: #4a514a; --green: #86af99; --green-dark: #a9c5b5; }
+  .button.primary { color: #172019; }
+  .button.secondary:hover { background: #292e29; }
+  .features { background: #202420; border-color: #373d37; }
+  .logbook-preview { border-color: #6a736a; }
+  .progress-rule { background: #373d37; }
+  .preview-row { border-color: #373d37; }
+  .preview-row div + div { border-color: #373d37; }
+  .drive-entry + .drive-entry { border-color: #373d37; }
+}
