@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
@@ -10,6 +10,10 @@ import {
 } from '../components/SettingsComponents';
 import { useTheme } from '../contexts/ThemeContext';
 import { cleanupOldLogs, clearLogs, exportLogs, getAllLogs, getLogStats, getRecentLogs } from '../utils/logger';
+import { getAppVersion } from '../utils/appInfo';
+import { haptics } from '../utils/haptics';
+
+const GITHUB_NEW_ISSUE_URL = 'https://github.com/jayb029/Drively/issues/new';
 
 function summarizeLogLine(line) {
   if (!line) return null;
@@ -99,6 +103,57 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
     },
   ]);
 
+  const reportIssue = async () => {
+    try {
+      const errorLines = await getRecentLogs(8, 'ERROR');
+      const relevantLogs = errorLines
+        .map((line) => line.replace(/ \| Data:.*$/, '').trim())
+        .filter(Boolean)
+        .join('\n')
+        .slice(-4000);
+      const issueBody = [
+        '## What happened?',
+        errorLines.length > 0
+          ? 'Drively diagnostics detected an error. Add what you were doing and what you expected instead.'
+          : 'Describe the problem and what you expected to happen instead.',
+        '',
+        '## Steps to reproduce',
+        '1. Open ...',
+        '2. Tap ...',
+        '3. Observe ...',
+        '',
+        '## Drively version',
+        getAppVersion(),
+        '',
+        '## Device and Android version',
+        `Android ${Platform.Version}`,
+        '',
+        '## Installation type',
+        __DEV__ ? 'Local development build' : 'GitHub Release APK or EAS build',
+        '',
+        '## How often does this happen?',
+        'Unknown',
+        '',
+        '## Logs or screenshots',
+        relevantLogs ? `\`\`\`text\n${relevantLogs}\n\`\`\`` : 'No error entries were detected in the retained log.',
+        '',
+        '## Additional context',
+        'Add relevant settings, permissions, recent upgrades, or workarounds.',
+        '',
+        '## Checklist',
+        '- [ ] I searched existing issues for the same problem.',
+        '- [x] Drively removed structured personal and location fields from these log excerpts.',
+        '- [ ] This is not a security vulnerability.',
+      ].join('\n');
+      const title = recentError ? `[Bug]: ${recentError.slice(0, 80)}` : '[Bug]: ';
+      const url = `${GITHUB_NEW_ISSUE_URL}?labels=bug&title=${encodeURIComponent(title)}&body=${encodeURIComponent(issueBody)}`;
+      haptics.action();
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert('Could not open GitHub', 'Open the Drively repository and choose the bug report template.');
+    }
+  };
+
   const errorCount = stats?.errorCount || 0;
   const warningCount = stats?.warningCount || 0;
   const health = loading && !stats
@@ -149,6 +204,16 @@ export default function DiagnosticsSettingsScreen({ navigation }) {
       </SettingsSection>
 
       <SettingsSection title="Troubleshooting">
+        <TouchableOpacity accessibilityRole="button" onPress={reportIssue} style={styles.reportButton}>
+          <Icon name="github" size={21} color={theme.colors.text.primary} />
+          <View style={styles.reportCopy}>
+            <Text style={styles.reportLabel}>Report an issue</Text>
+            <Text style={styles.reportDetail}>
+              {errorCount > 0 ? 'Open a prefilled bug report with relevant error entries.' : 'Open a new bug report on GitHub.'}
+            </Text>
+          </View>
+          <Icon name="open-in-new" size={18} color={theme.colors.text.light} />
+        </TouchableOpacity>
         <SettingsActionRow
           label="Advanced diagnostics"
           onPress={() => setAdvancedOpen((open) => !open)}
@@ -196,6 +261,19 @@ function makeStyles(theme) {
     healthTitle: { color: theme.colors.text.primary, fontSize: 16, fontWeight: '700', lineHeight: 21 },
     healthDetail: { color: theme.colors.text.secondary, fontSize: 13, lineHeight: 19 },
     actions: { padding: 14, gap: 10 },
+    reportButton: {
+      minHeight: 68,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border.light,
+    },
+    reportCopy: { flex: 1, gap: 3 },
+    reportLabel: { color: theme.colors.text.primary, fontSize: 15, fontWeight: '600' },
+    reportDetail: { color: theme.colors.text.secondary, fontSize: 12, lineHeight: 17 },
     summary: { color: theme.colors.text.secondary, fontSize: 13, lineHeight: 18 },
     logScroller: { maxHeight: 360 },
     logBlock: { padding: 12 },
