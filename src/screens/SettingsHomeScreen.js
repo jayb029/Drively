@@ -3,11 +3,13 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
+import { useApkUpdate } from '../contexts/ApkUpdateContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { getAppVersion } from '../utils/appInfo';
 
 export default function SettingsHomeScreen({ navigation }) {
   const { settings, supervisorProfiles, user } = useDriving();
+  const apkUpdate = useApkUpdate();
   const { theme, themeMode } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -82,7 +84,9 @@ export default function SettingsHomeScreen({ navigation }) {
         {
           icon: 'information-outline',
           label: 'About and updates',
-          value: getAppVersion(),
+          value: apkUpdate.status === 'available'
+            ? `APK v${apkUpdate.release.version} available`
+            : getAppVersion(),
           onPress: () => navigation.navigate('AboutSettings'),
         },
         {

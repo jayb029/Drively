@@ -6,11 +6,13 @@ import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { DrivingProvider } from './src/contexts/DrivingContext';
+import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
 import { configureDriveNotifications } from './src/services/driveDetection';
 import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/services/drivePip';
+import { downloadOtaUpdateInBackground } from './src/services/otaUpdater';
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
@@ -69,6 +71,9 @@ function AppContent() {
     };
 
     setupLogger();
+    downloadOtaUpdateInBackground().catch((error) => {
+      logError(error, 'OTA_UPDATER', 'Background OTA update failed');
+    });
   }, []);
 
   useEffect(() => {
@@ -90,12 +95,14 @@ function AppContent() {
   return (
     <PaperProvider theme={paperTheme}>
       <DrivingProvider>
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-          <StatusBar style={isDark ? 'light' : 'dark'} hidden={isInPictureInPictureMode} />
-          <View style={styles.content}>
-            <AppNavigator />
+        <ApkUpdateProvider>
+          <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <StatusBar style={isDark ? 'light' : 'dark'} hidden={isInPictureInPictureMode} />
+            <View style={styles.content}>
+              <AppNavigator />
+            </View>
           </View>
-        </View>
+        </ApkUpdateProvider>
       </DrivingProvider>
     </PaperProvider>
   );

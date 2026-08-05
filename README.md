@@ -68,6 +68,7 @@ npm start -- --dev-client
 ## Useful commands
 
 ```sh
+npm run test:apk-updater   # Validate GitHub APK release parsing and version checks
 npm run test:night-driving  # Run the focused night-driving tests
 npx expo export -p android  # Verify the Android JavaScript and asset bundle
 npm run version:set -- 2.1  # Update coordinated version metadata
@@ -77,12 +78,35 @@ EAS build profiles and update channels are defined in `eas.json`:
 
 ```sh
 npx eas-cli build --platform android --profile preview
+npx eas-cli build --platform android --profile release-apk
 npx eas-cli build --platform android --profile production
 npx eas-cli update --channel preview --message "Describe the update"
 npx eas-cli update --channel production --message "Describe the update"
 ```
 
 Expo updates can deliver JavaScript, styling, and bundled asset changes. Native dependencies, permissions, Expo SDK changes, and runtime-version changes require a new native build.
+
+### Android app updates
+
+Installed Android builds check the latest public GitHub Release on startup after onboarding. Users can also check manually from **Settings → About and updates → App updates**. When a newer APK is available, Drively shows the ordered commit-title changelog, recommends a full JSON backup, and guides the user through opening the signed APK. Expo OTA fixes are checked and downloaded silently, then activate on a later normal app launch.
+
+Every APK release must:
+
+- use a stable GitHub tag matching `v<version>`, such as `v2.2.0`;
+- include one APK named `Drively-v<version>-<versionCode>.apk`;
+- include one phone changelog named `Drively-v<version>-changelog.json`;
+- use the same Android application ID and signing key as the installed app; and
+- increment the Android version code.
+
+For example:
+
+```sh
+npm run version:set -- 2.2.0
+npx expo export -p android
+npx eas-cli build --platform android --profile release-apk
+```
+
+The `release-apk` profile creates an installable APK on the production update channel and increments its remote Android version code. Use the version code reported by EAS when naming the asset—for example, upload build 14 to the `v2.2.0` GitHub Release as `Drively-v2.2.0-14.apk`. The updater deliberately rejects APKs hosted outside this repository or releases whose tag, filename version, and build code do not agree.
 
 ## Project structure
 

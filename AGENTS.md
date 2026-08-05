@@ -110,6 +110,14 @@ Create an OTA-capable production build:
 npx eas-cli build --platform android --profile production
 ```
 
+Create a directly installable production-channel APK for GitHub Releases:
+
+```sh
+npx eas-cli build --platform android --profile release-apk
+```
+
+Name the uploaded GitHub asset `Drively-v<version>-<versionCode>.apk`, using the version code reported by EAS. The in-app APK updater requires that exact convention and only accepts assets from the public `jayb029/Drively` repository.
+
 Publish an OTA update to production installs:
 
 ```sh

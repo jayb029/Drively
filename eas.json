@@ -13,6 +13,14 @@
       "distribution": "internal",
       "channel": "preview"
     },
+    "release-apk": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "android": {
         "buildType": "app-bundle"

@@ -8,58 +8,17 @@ import {
   SettingsSection,
 } from '../components/SettingsComponents';
 import { useDriving } from '../contexts/DrivingContext';
+import { useApkUpdate } from '../contexts/ApkUpdateContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatApkSize } from '../services/apkUpdater';
 import { createDevDrivingData } from '../utils/devData';
 import { getAppVersion } from '../utils/appInfo';
-import { logUserAction } from '../utils/logger';
 
 export default function AboutSettingsScreen({ navigation }) {
   const driving = useDriving();
+  const apkUpdate = useApkUpdate();
   const { theme } = useTheme();
-  const [checking, setChecking] = useState(false);
-  const [applying, setApplying] = useState(false);
-  const [status, setStatus] = useState(null);
   const [versionTaps, setVersionTaps] = useState(0);
-
-  const checkForUpdates = async () => {
-    if (!Updates.isEnabled || __DEV__) {
-      Alert.alert('Updates unavailable', 'OTA updates can only be checked from an installed preview or production build.');
-      return;
-    }
-    try {
-      setChecking(true);
-      setStatus('Checking…');
-      const result = await Updates.checkForUpdateAsync();
-      setStatus(result.isAvailable || result.isRollBackToEmbedded ? 'Update available' : 'Up to date');
-    } catch (error) {
-      setStatus('Could not check for updates');
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const applyUpdate = async () => {
-    if (!Updates.isEnabled || __DEV__) {
-      Alert.alert('Updates unavailable', 'OTA updates can only be installed from an installed preview or production build.');
-      return;
-    }
-    try {
-      setApplying(true);
-      setStatus('Downloading…');
-      const result = await Updates.fetchUpdateAsync();
-      if (result.isNew || result.isRollBackToEmbedded) {
-        logUserAction('apply_ota_update', 'SETTINGS', { channel: Updates.channel, runtimeVersion: Updates.runtimeVersion });
-        setStatus('Restarting…');
-        await Updates.reloadAsync();
-      } else {
-        setStatus('No new update is ready');
-      }
-    } catch (error) {
-      setStatus('Could not install update');
-    } finally {
-      setApplying(false);
-    }
-  };
 
   const handleVersionPress = () => {
     if (!__DEV__) return;
@@ -78,19 +37,52 @@ export default function AboutSettingsScreen({ navigation }) {
     ]);
   };
 
+  const apkReleaseDetails = apkUpdate.release
+    ? [
+      `Build ${apkUpdate.release.versionCode}`,
+      formatApkSize(apkUpdate.release.sizeBytes),
+    ].filter(Boolean).join(' · ')
+    : null;
+
   return (
     <SettingsPage navigation={navigation} title="About and updates" subtitle="Version details, app updates, and service information.">
       <SettingsSection title="Version">
         <SettingsActionRow label="Drively version" onPress={__DEV__ ? handleVersionPress : undefined} value={getAppVersion()} />
+        <SettingsActionRow label="APK build" value={String(apkUpdate.installed.versionCode || 'Not available')} />
         <SettingsActionRow label="Update channel" value={Updates.channel || 'Embedded build'} />
         <SettingsActionRow label="Runtime version" value={String(Updates.runtimeVersion || 'Not available')} />
       </SettingsSection>
 
       <SettingsSection title="App updates">
+        <SettingsActionRow
+          label={apkUpdate.status === 'available' ? `Drively v${apkUpdate.release.version}` : 'Installed APK'}
+          subtitle={apkUpdate.status === 'available'
+            ? apkUpdate.release.changes.map((change) => `• ${change}`).join('\n') || 'A newer signed Android package is available.'
+            : 'Checks the public Drively GitHub release for a newer signed APK.'}
+          value={apkUpdate.status === 'available' ? apkReleaseDetails : `v${apkUpdate.installed.version}`}
+        />
         <View style={{ padding: 14, gap: 10 }}>
-          {!!status && <Text style={{ color: theme.colors.text.secondary, fontSize: 13 }}>{status}</Text>}
-          <SettingsButton disabled={checking || applying} label={checking ? 'Checking…' : 'Check for updates'} onPress={checkForUpdates} secondary />
-          <SettingsButton disabled={checking || applying} label={applying ? 'Updating…' : 'Update now'} onPress={applyUpdate} />
+          {!!apkUpdate.message && (
+            <Text style={{
+              color: apkUpdate.status === 'error' ? theme.colors.error : theme.colors.text.secondary,
+              fontSize: 13,
+              lineHeight: 18,
+            }}>
+              {apkUpdate.message}
+            </Text>
+          )}
+          {apkUpdate.status === 'available' && (
+            <SettingsButton label={`Update to Drively v${apkUpdate.release.version}`} onPress={apkUpdate.startUpdate} />
+          )}
+          <SettingsButton
+            disabled={apkUpdate.status === 'checking'}
+            label={apkUpdate.status === 'checking' ? 'Checking GitHub…' : apkUpdate.status === 'available' ? 'Check again' : 'Check for APK update'}
+            onPress={() => apkUpdate.checkForApkUpdate()}
+            secondary={apkUpdate.status === 'available'}
+          />
+          <Text style={{ color: theme.colors.text.light, fontSize: 12, lineHeight: 17 }}>
+            Small OTA fixes download silently in the background. APK updates may ask for browser install permission.
+          </Text>
         </View>
       </SettingsSection>
 

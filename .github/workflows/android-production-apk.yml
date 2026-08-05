@@ -96,6 +96,7 @@ jobs:
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "Building Drively $VERSION_NAME with Android version code $VERSION_CODE."
 
       - name: Install dependencies
@@ -172,6 +173,40 @@ jobs:
 
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Create phone changelog
+        id: changelog
+        shell: bash
+        env:
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          SOURCE_COMMIT: ${{ steps.release.outputs.source_sha }}
+        run: |
+          CHANGELOG_PATH="$RUNNER_TEMP/Drively-v${VERSION_NAME}-changelog.json"
+          CHANGES_PATH="$RUNNER_TEMP/phone-changes.txt"
+          PREVIOUS_TAG="$(
+            git describe \
+              --tags \
+              --abbrev=0 \
+              --match 'v[0-9]*' \
+              "$SOURCE_COMMIT" \
+              2>/dev/null || true
+          )"
+
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            git log --reverse --format='%s' "$PREVIOUS_TAG..$SOURCE_COMMIT" > "$CHANGES_PATH"
+          else
+            git log -1 --format='%s' "$SOURCE_COMMIT" > "$CHANGES_PATH"
+          fi
+
+          jq -Rn \
+            --arg version "$VERSION_NAME" \
+            '{version: $version, changes: [inputs | select(length > 0)]}' \
+            < "$CHANGES_PATH" \
+            > "$CHANGELOG_PATH"
+
+          test -s "$CHANGELOG_PATH"
+          echo "path=$CHANGELOG_PATH" >> "$GITHUB_OUTPUT"
+          echo "filename=Drively-v${VERSION_NAME}-changelog.json" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         shell: bash
         env:
@@ -182,6 +217,8 @@ jobs:
           RELEASE_COMMIT: ${{ steps.commit.outputs.sha }}
           APK_PATH: ${{ steps.apk.outputs.path }}
           APK_FILENAME: ${{ steps.apk.outputs.filename }}
+          CHANGELOG_PATH: ${{ steps.changelog.outputs.path }}
+          CHANGELOG_FILENAME: ${{ steps.changelog.outputs.filename }}
         run: |
           NOTES_FILE="$RUNNER_TEMP/release-notes.md"
           printf '%s\n\n%s\n\n%s\n' \
@@ -211,6 +248,7 @@ jobs:
 
           gh release create "$TAG_NAME" \
             "$APK_PATH#$APK_FILENAME" \
+            "$CHANGELOG_PATH#$CHANGELOG_FILENAME" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$RELEASE_COMMIT" \
             --title "Drively v${VERSION_NAME}" \
