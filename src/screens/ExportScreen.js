@@ -17,7 +17,7 @@ import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { exportDataAsJSON, exportDrivesAsCSV } from '../utils/storage';
 import { generatePDFReport } from '../utils/pdf';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 
 export default function ExportScreen({ navigation }) {
   const { drives, supervisorProfiles, user, streaks, settings, updateSettings } = useDriving();

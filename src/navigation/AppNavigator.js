@@ -2,9 +2,9 @@ import React from 'react';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
 import { haptics } from '../utils/haptics';
 
@@ -57,8 +57,14 @@ function MainTabs() {
   
   return (
     <Tab.Navigator
-      screenListeners={{ tabPress: () => haptics.selection() }}
+      screenListeners={{ tabPress: () => haptics.action() }}
       screenOptions={({ route }) => ({
+        tabBarButton: (props) => (
+          <TouchableOpacity
+            {...props}
+            activeOpacity={0.7}
+          />
+        ),
         tabBarIcon: ({ focused }) => {
           let iconName;
           
