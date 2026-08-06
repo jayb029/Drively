@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { InteractionManager, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
@@ -61,7 +61,7 @@ function DashboardTab(props) {
   useEffect(() => {
     if (!navigation || didPreloadRef.current) return undefined;
 
-    const task = InteractionManager.runAfterInteractions(() => {
+    const idleId = requestIdleCallback(() => {
       if (didPreloadRef.current) return;
       didPreloadRef.current = true;
 
@@ -77,9 +77,7 @@ function DashboardTab(props) {
     });
 
     return () => {
-      if (typeof task?.cancel === 'function') {
-        task.cancel();
-      }
+      cancelIdleCallback(idleId);
     };
   }, [navigation]);
 

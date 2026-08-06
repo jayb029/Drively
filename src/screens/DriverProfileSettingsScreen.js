@@ -35,8 +35,8 @@ export default function DriverProfileSettingsScreen({ navigation }) {
       mode: 'date',
       minimumDate: getMinimumDateOfBirthDate(),
       maximumDate: new Date(),
-      onChange: (event, selectedDate) => {
-        if (event.type === 'set' && selectedDate) setDateOfBirth(formatDateOfBirthFromDate(selectedDate));
+      onValueChange: (_event, selectedDate) => {
+        setDateOfBirth(formatDateOfBirthFromDate(selectedDate));
       },
     });
   };

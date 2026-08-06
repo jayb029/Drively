@@ -822,8 +822,7 @@ export default function LogDriveScreen({ navigation }) {
       mode: 'date',
       minimumDate: getMinimumDateOfBirthDate(),
       maximumDate: new Date(),
-      onChange: (event, selectedDate) => {
-        if (event.type !== 'set' || !selectedDate) return;
+      onValueChange: (_event, selectedDate) => {
         setSupervisorDateOfBirth(formatDateOfBirthFromDate(selectedDate));
       },
     });

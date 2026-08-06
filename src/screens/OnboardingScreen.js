@@ -222,8 +222,7 @@ export default function OnboardingScreen({ navigation }) {
       mode: 'date',
       minimumDate: getMinimumDateOfBirthDate(),
       maximumDate: new Date(),
-      onChange: (event, selectedDate) => {
-        if (event.type !== 'set' || !selectedDate) return;
+      onValueChange: (_event, selectedDate) => {
         setDateOfBirth(formatDateOfBirthFromDate(selectedDate));
       },
     });

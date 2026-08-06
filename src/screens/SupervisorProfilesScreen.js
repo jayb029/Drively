@@ -248,8 +248,7 @@ export default function SupervisorProfilesScreen({ navigation }) {
       mode: 'date',
       minimumDate: getMinimumDateOfBirthDate(),
       maximumDate: new Date(),
-      onChange: (event, selectedDate) => {
-        if (event.type !== 'set' || !selectedDate) return;
+      onValueChange: (_event, selectedDate) => {
         setForm((current) => ({
           ...current,
           dateOfBirth: formatDateOfBirthFromDate(selectedDate),
