@@ -36,6 +36,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# local recovery dumps (may contain personal drive log data)
+.recovery/
+
 # typescript
 *.tsbuildinfo
 

@@ -20,6 +20,24 @@ const CLOUD_BACKUP_PREFERENCE_KEY = 'drively.cloudBackupEnabled.v1';
 const WEB_DATA_KEY = 'drively.data.v1';
 let saveQueue = Promise.resolve();
 let activeCloudBackup = null;
+let memoryDataCache = null;
+let preloadPromise = null;
+
+/**
+ * Preload all app data into memory cache.
+ */
+export function preloadData() {
+  if (memoryDataCache !== null) {
+    return Promise.resolve(memoryDataCache);
+  }
+  if (!preloadPromise) {
+    preloadPromise = loadData({ force: true }).catch((err) => {
+      preloadPromise = null;
+      throw err;
+    });
+  }
+  return preloadPromise;
+}
 
 function getDataPaths(cloudBackupEnabled) {
   const directory = cloudBackupEnabled ? CLOUD_DATA_DIR : LOCAL_DATA_DIR;
@@ -172,10 +190,92 @@ function hasMeaningfulData(data) {
   );
 }
 
+/**
+ * Rank datasets so a thin onboarded shell loses to a real export with drives.
+ */
+function dataRichnessScore(data) {
+  if (!data) return -1;
+  return (
+    (Array.isArray(data.drives) ? data.drives.length : 0) * 1000 +
+    (Array.isArray(data.supervisorProfiles) ? data.supervisorProfiles.length : 0) * 50 +
+    (Array.isArray(data.detectedEvents) ? data.detectedEvents.length : 0) * 10 +
+    (data.user?.onboardingComplete ? 5 : 0) +
+    (!isDefaultUserValue('driverName', data?.user?.driverName) ? 1 : 0) +
+    (!isDefaultUserValue('permitNumber', data?.user?.permitNumber) ? 1 : 0)
+  );
+}
+
 function pickRestoredData(primaryData, backupData) {
+  if (!primaryData) return backupData || null;
   if (!backupData) return primaryData;
-  if (!hasMeaningfulData(primaryData) && hasMeaningfulData(backupData)) return backupData;
-  return primaryData;
+  return dataRichnessScore(backupData) > dataRichnessScore(primaryData) ? backupData : primaryData;
+}
+
+function isValidDataShape(data) {
+  return !!(data && data.user && data.drives && data.streaks && data.settings);
+}
+
+async function readJsonDataFile(uri) {
+  try {
+    if (!(await fileExists(uri))) return null;
+    const raw = await FileSystem.readAsStringAsync(uri);
+    const data = JSON.parse(raw);
+    return isValidDataShape(data) ? data : null;
+  } catch (error) {
+    console.warn('Failed to read data file:', uri, error);
+    return null;
+  }
+}
+
+async function collectJsonFilesFromDirectory(directory, namePredicate) {
+  try {
+    if (!directory || !(await fileExists(directory))) return [];
+    const names = await FileSystem.readDirectoryAsync(directory);
+    return names
+      .filter((name) => name.endsWith('.json') && (!namePredicate || namePredicate(name)))
+      .map((name) => `${directory}${name}`);
+  } catch (error) {
+    console.warn('Failed to list directory for recovery:', directory, error);
+    return [];
+  }
+}
+
+/**
+ * Scan main/backup across local, cloud, legacy, and export cache locations.
+ * Prefers the richest valid dataset (most drives/profiles), not just "any onboarded shell".
+ */
+async function findBestAvailableData(preferredCloudBackup) {
+  const preferred = getDataPaths(preferredCloudBackup);
+  const alternate = getDataPaths(!preferredCloudBackup);
+  const candidateUris = [
+    preferred.mainFile,
+    preferred.backupFile,
+    alternate.mainFile,
+    alternate.backupFile,
+    LEGACY_MAIN_DATA_FILE,
+    LEGACY_BACKUP_DATA_FILE,
+  ];
+
+  // Export/share flow writes JSON backups into the cache directory.
+  if (FileSystem.cacheDirectory) {
+    const cacheBackups = await collectJsonFilesFromDirectory(
+      FileSystem.cacheDirectory,
+      (name) => name.startsWith('drively_backup_') || name.startsWith('drively_export_')
+    );
+    const pickerBackups = await collectJsonFilesFromDirectory(
+      `${FileSystem.cacheDirectory}DocumentPicker/`,
+      () => true
+    );
+    candidateUris.push(...cacheBackups, ...pickerBackups);
+  }
+
+  let best = null;
+  for (const uri of candidateUris) {
+    const data = await readJsonDataFile(uri);
+    if (!data) continue;
+    best = pickRestoredData(best, data);
+  }
+  return best;
 }
 
 /**
@@ -260,6 +360,13 @@ export async function setCloudBackupEnabled(data, enabled) {
     await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
     await AsyncStorage.setItem(CLOUD_BACKUP_PREFERENCE_KEY, String(nextEnabled));
     activeCloudBackup = nextEnabled;
+    memoryDataCache = migrateData({
+      ...data,
+      settings: {
+        ...(data.settings || {}),
+        cloudBackupEnabled: nextEnabled,
+      },
+    });
     return true;
   } catch (error) {
     console.error('Failed to change Android cloud backup setting:', error);
@@ -268,28 +375,34 @@ export async function setCloudBackupEnabled(data, enabled) {
 }
 
 /**
- * Load data from the main file, fallback to backup if corrupted
+ * Load data from memory cache if available, or from storage.
+ * Never overwrites on-disk user data with empty defaults on read failure.
  */
-export async function loadData() {
+export async function loadData(options = {}) {
+  const force = options?.force === true;
+  if (memoryDataCache !== null && !force) {
+    return memoryDataCache;
+  }
+
+  let result;
   if (Platform.OS === 'web') {
     try {
       const dataString = await AsyncStorage.getItem(WEB_DATA_KEY);
       if (!dataString) {
-        await saveData(DEFAULT_DATA);
-        return migrateData(DEFAULT_DATA);
+        result = migrateData(DEFAULT_DATA);
+      } else {
+        const data = JSON.parse(dataString);
+        if (!isValidDataShape(data)) {
+          throw new Error('Invalid data structure');
+        }
+        result = migrateData(data);
       }
-
-      const data = JSON.parse(dataString);
-      if (!data.user || !data.drives || !data.streaks || !data.settings) {
-        throw new Error('Invalid data structure');
-      }
-
-      return migrateData(data);
     } catch (error) {
-      console.warn('Web data unavailable, using defaults:', error);
-      await saveData(DEFAULT_DATA);
-      return migrateData(DEFAULT_DATA);
+      console.warn('Web data unavailable, using in-memory defaults (not wiping storage):', error);
+      result = migrateData(DEFAULT_DATA);
     }
+    memoryDataCache = result;
+    return memoryDataCache;
   }
 
   try {
@@ -297,71 +410,91 @@ export async function loadData() {
     if (!cloudBackupEnabled) {
       await migrateLegacyStorageToLocal();
     }
+
     const { directory, mainFile, backupFile } = getDataPaths(cloudBackupEnabled);
     await ensureDirectoryExists(directory);
-    
-    const mainFileInfo = await FileSystem.getInfoAsync(mainFile);
-    if (!mainFileInfo.exists) {
-      // First time user, create default data
-      await saveData(DEFAULT_DATA);
-      return DEFAULT_DATA;
+
+    const mainData = await readJsonDataFile(mainFile);
+    const backupData = await readJsonDataFile(backupFile);
+    // Always scan all known locations so a thin onboarded shell cannot hide a richer export.
+    const bestAvailable = await findBestAvailableData(cloudBackupEnabled);
+    let restoredData = pickRestoredData(pickRestoredData(mainData, backupData), bestAvailable);
+
+    if (!restoredData) {
+      // True first launch — no files anywhere. Seed defaults without treating this as recovery.
+      result = migrateData(DEFAULT_DATA);
+      memoryDataCache = result;
+      // Seed disk only when nothing exists yet so future loads have a file.
+      await saveData(result, { allowEmpty: true });
+      return memoryDataCache;
     }
 
-    const dataString = await FileSystem.readAsStringAsync(mainFile);
-    const data = JSON.parse(dataString);
-    
-    // Validate the data structure
-    if (!data.user || !data.drives || !data.streaks || !data.settings) {
-      throw new Error('Invalid data structure');
-    }
-    
-    let restoredData = data;
-    if (!hasMeaningfulData(data)) {
-      try {
-        const backupFileInfo = await FileSystem.getInfoAsync(backupFile);
-        if (backupFileInfo.exists) {
-          const backupString = await FileSystem.readAsStringAsync(backupFile);
-          restoredData = pickRestoredData(data, JSON.parse(backupString));
-        }
-      } catch (backupError) {
-        console.warn('Backup data unavailable during restore check:', backupError);
-      }
-    }
+    result = migrateData(restoredData);
 
-    return migrateData(restoredData);
+    // Write back when we recovered a richer dataset than the active main file.
+    if (dataRichnessScore(result) > dataRichnessScore(mainData)) {
+      console.warn('Restored richer app data from backup/export storage location', {
+        mainScore: dataRichnessScore(mainData),
+        restoredScore: dataRichnessScore(result),
+        drives: result.drives?.length || 0,
+      });
+      memoryDataCache = result;
+      await saveData(result);
+      return memoryDataCache;
+    }
   } catch (error) {
-    console.warn('Main data file corrupted, trying backup:', error);
-    
+    console.warn('Failed to load app data, trying full storage scan:', error);
+
     try {
       const cloudBackupEnabled = await getCloudBackupPreference();
-      const { backupFile } = getDataPaths(cloudBackupEnabled);
-      const backupFileInfo = await FileSystem.getInfoAsync(backupFile);
-      if (backupFileInfo.exists) {
-        const backupString = await FileSystem.readAsStringAsync(backupFile);
-        const backupData = JSON.parse(backupString);
-        
-        // Restore from backup
-        const migratedBackup = migrateData(backupData);
-        await saveData(migratedBackup);
-        return migratedBackup;
+      const recovered = await findBestAvailableData(cloudBackupEnabled);
+      if (recovered) {
+        result = migrateData(recovered);
+        memoryDataCache = result;
+        if (hasMeaningfulData(result)) {
+          await saveData(result);
+        }
+        return memoryDataCache;
       }
-    } catch (backupError) {
-      console.warn('Backup file also corrupted:', backupError);
+    } catch (recoveryError) {
+      console.warn('Full storage scan also failed:', recoveryError);
     }
-    
-    // Last resort: return default data
-    await saveData(DEFAULT_DATA);
-    return DEFAULT_DATA;
+
+    // Last resort: in-memory defaults only. Do NOT write defaults over unknown disk state.
+    console.warn('Using in-memory defaults without wiping storage');
+    result = migrateData(DEFAULT_DATA);
   }
+
+  memoryDataCache = result;
+  return memoryDataCache;
 }
 
 /**
- * Save data to main file and create backup
+ * Save data to main file and create backup.
+ * Refuses to overwrite meaningful on-disk data with an empty default shell
+ * unless allowEmpty is explicitly true (first-run seed / intentional reset).
  */
-async function persistData(data) {
+async function persistData(data, options = {}) {
+  const allowEmpty = options?.allowEmpty === true;
+
   if (Platform.OS === 'web') {
     try {
-      await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(migrateData(data)));
+      const normalizedData = migrateData(data);
+      if (!allowEmpty && !hasMeaningfulData(normalizedData)) {
+        const existingRaw = await AsyncStorage.getItem(WEB_DATA_KEY);
+        if (existingRaw) {
+          try {
+            const existing = JSON.parse(existingRaw);
+            if (hasMeaningfulData(existing)) {
+              console.warn('Refusing to overwrite meaningful web data with empty defaults');
+              return false;
+            }
+          } catch {
+            // ignore parse errors and continue write
+          }
+        }
+      }
+      await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(normalizedData));
       return true;
     } catch (error) {
       console.error('Failed to save web data:', error);
@@ -380,20 +513,56 @@ async function persistData(data) {
         cloudBackupEnabled,
       },
     });
-    
-    // Create backup of current data before overwriting
-    const mainFileInfo = await FileSystem.getInfoAsync(mainFile);
-    if (mainFileInfo.exists) {
-      await FileSystem.copyAsync({
-        from: mainFile,
-        to: backupFile,
-      });
+
+    // Safety net: never clobber real history with an empty/thin shell
+    // (e.g. crash fallback state or a fresh onboarding overwrite).
+    if (!allowEmpty) {
+      const existingMain = await readJsonDataFile(mainFile);
+      const existingBackup = await readJsonDataFile(backupFile);
+      const existing = pickRestoredData(existingMain, existingBackup);
+      if (existing) {
+        const existingDrives = existing.drives?.length || 0;
+        const nextDrives = normalizedData.drives?.length || 0;
+        const existingScore = dataRichnessScore(existing);
+        const nextScore = dataRichnessScore(normalizedData);
+
+        if (!hasMeaningfulData(normalizedData) && hasMeaningfulData(existing)) {
+          console.warn('Refusing to overwrite meaningful data with empty defaults');
+          return false;
+        }
+
+        // Block wiping multi-drive history in one save (full reset uses clearAllData).
+        if (existingDrives >= 2 && nextDrives === 0) {
+          console.warn('Refusing to wipe drive history with an empty drives list', {
+            existingDrives,
+            nextDrives,
+          });
+          return false;
+        }
+
+        // Block sudden collapse from a rich profile to a thin onboarded shell.
+        if (existingScore >= 1000 && nextScore < existingScore * 0.25) {
+          console.warn('Refusing to overwrite rich data with much thinner dataset', {
+            existingScore,
+            nextScore,
+          });
+          return false;
+        }
+      }
     }
-    
-    // Save new data
+
+    // Create backup of current data before overwriting, but only when current main is meaningful.
+    // Copying an empty shell into backup would destroy the last good copy.
+    const existingMain = await readJsonDataFile(mainFile);
+    if (existingMain && hasMeaningfulData(existingMain)) {
+      await FileSystem.writeAsStringAsync(backupFile, JSON.stringify(migrateData(existingMain)));
+    } else if (!(await fileExists(backupFile)) && existingMain) {
+      await FileSystem.writeAsStringAsync(backupFile, JSON.stringify(migrateData(existingMain)));
+    }
+
     const dataString = JSON.stringify(normalizedData);
     await FileSystem.writeAsStringAsync(mainFile, dataString);
-    
+
     return true;
   } catch (error) {
     console.error('Failed to save data:', error);
@@ -401,10 +570,25 @@ async function persistData(data) {
   }
 }
 
-export function saveData(data) {
+export function saveData(data, options = {}) {
+  const normalizedData = migrateData({
+    ...data,
+    settings: {
+      ...(data.settings || {}),
+      cloudBackupEnabled: activeCloudBackup ?? data.settings?.cloudBackupEnabled ?? false,
+    },
+  });
+
+  // Keep memory cache in sync only when this save is allowed to represent app state.
+  // If we refuse an empty overwrite later, loadData(force) can still recover from disk.
+  const shouldUpdateCache = options?.allowEmpty === true || hasMeaningfulData(normalizedData) || memoryDataCache === null;
+  if (shouldUpdateCache) {
+    memoryDataCache = normalizedData;
+  }
+
   saveQueue = saveQueue
     .catch(() => undefined)
-    .then(() => persistData(data));
+    .then(() => persistData(normalizedData, options));
   return saveQueue;
 }
 
@@ -562,6 +746,10 @@ export async function exportDrivesAsCSV() {
  * Clear all data (for testing or reset)
  */
 export async function clearAllData() {
+  memoryDataCache = null;
+  preloadPromise = null;
+  activeCloudBackup = null;
+
   if (Platform.OS === 'web') {
     try {
       await AsyncStorage.removeItem(WEB_DATA_KEY);
@@ -578,7 +766,6 @@ export async function clearAllData() {
     await deleteIfExists(LEGACY_MAIN_DATA_FILE);
     await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
     await AsyncStorage.removeItem(CLOUD_BACKUP_PREFERENCE_KEY);
-    activeCloudBackup = null;
     
     return true;
   } catch (error) {

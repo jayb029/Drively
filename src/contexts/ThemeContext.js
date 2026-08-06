@@ -24,6 +24,32 @@ const ThemeContext = createContext({
   setThemeMode: () => {},
 });
 
+let cachedThemeMode = null;
+let themePreloadPromise = null;
+
+/**
+ * Preload theme preference into memory cache
+ */
+export function preloadThemePreference() {
+  if (cachedThemeMode !== null) {
+    return Promise.resolve(cachedThemeMode);
+  }
+  if (!themePreloadPromise) {
+    themePreloadPromise = (async () => {
+      try {
+        const savedThemeMode = await AsyncStorage.getItem('themeMode');
+        if (savedThemeMode && Object.values(THEME_MODES).includes(savedThemeMode)) {
+          cachedThemeMode = savedThemeMode;
+        }
+      } catch (error) {
+        console.warn('Failed to preload theme preference:', error);
+      }
+      return cachedThemeMode || THEME_MODES.SYSTEM;
+    })();
+  }
+  return themePreloadPromise;
+}
+
 /**
  * ThemeProvider manages theme state and persistence
  * Supports light, dark, and system theme modes
@@ -34,8 +60,8 @@ export function ThemeProvider({ children }) {
   const [appearanceColorScheme, setAppearanceColorScheme] = useState(
     normalizeColorScheme(Appearance.getColorScheme())
   );
-  const [themeMode, setThemeModeState] = useState(THEME_MODES.SYSTEM);
-  const [isLoading, setIsLoading] = useState(true);
+  const [themeMode, setThemeModeState] = useState(() => cachedThemeMode || THEME_MODES.SYSTEM);
+  const [isLoading, setIsLoading] = useState(() => cachedThemeMode === null);
 
   // Keep a direct Appearance subscription because some native builds can lag
   // behind the hook when the app starts in system theme mode.
@@ -62,39 +88,44 @@ export function ThemeProvider({ children }) {
    * Load saved theme preference from AsyncStorage
    */
   useEffect(() => {
+    let isMounted = true;
     const loadThemePreference = async () => {
       try {
-        const savedThemeMode = await AsyncStorage.getItem('themeMode');
-        if (savedThemeMode && Object.values(THEME_MODES).includes(savedThemeMode)) {
-          setThemeModeState(savedThemeMode);
+        const mode = await preloadThemePreference();
+        if (isMounted) {
+          setThemeModeState(mode);
         }
       } catch (error) {
         console.warn('Failed to load theme preference:', error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadThemePreference();
+    return () => { isMounted = false; };
   }, []);
 
   /**
    * Update theme mode and persist to storage
    */
-  const setThemeMode = useCallback(async (mode) => {
+  const setThemeMode = useCallback((mode) => {
     if (!Object.values(THEME_MODES).includes(mode)) {
       console.warn('Invalid theme mode:', mode);
       return;
     }
 
-    try {
-      setThemeModeState(mode);
-      await AsyncStorage.setItem('themeMode', mode);
-      await logUserAction('change_theme', 'THEME_CONTEXT', { newTheme: mode, previousTheme: themeMode });
-    } catch (error) {
+    const prevMode = themeMode;
+    cachedThemeMode = mode;
+    setThemeModeState(mode);
+
+    AsyncStorage.setItem('themeMode', mode).catch((error) => {
       console.warn('Failed to save theme preference:', error);
-      await logger.error('Failed to save theme preference', 'THEME_CONTEXT', { error: error.message, mode });
-    }
+      logger.error('Failed to save theme preference', 'THEME_CONTEXT', { error: error.message, mode });
+    });
+    logUserAction('change_theme', 'THEME_CONTEXT', { newTheme: mode, previousTheme: prevMode });
   }, [themeMode]);
 
   const value = useMemo(() => ({

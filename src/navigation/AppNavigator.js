@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TouchableOpacity, View } from 'react-native';
+import { InteractionManager, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { logUserAction } from '../utils/logger';
@@ -33,6 +33,9 @@ import { useTheme } from '../contexts/ThemeContext';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Bottom tabs that should feel instant on first open.
+const MAIN_TAB_SCREENS = ['Dashboard', 'LogDrive', 'DriveHistory', 'Settings'];
+
 // Tab icon component
 function TabIcon({ children, focused, large, theme }) {
   return (
@@ -47,6 +50,42 @@ function TabIcon({ children, focused, large, theme }) {
   );
 }
 
+/**
+ * After Home is interactive, preload the other main tabs so the first open
+ * is not a cold mount. React Navigation lazy-loads tabs by default.
+ */
+function DashboardTab(props) {
+  const { navigation } = props;
+  const didPreloadRef = useRef(false);
+
+  useEffect(() => {
+    if (!navigation || didPreloadRef.current) return undefined;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (didPreloadRef.current) return;
+      didPreloadRef.current = true;
+
+      MAIN_TAB_SCREENS.forEach((screen) => {
+        try {
+          navigation.preload(screen);
+        } catch (error) {
+          if (__DEV__) {
+            console.warn(`Failed to preload tab "${screen}":`, error);
+          }
+        }
+      });
+    });
+
+    return () => {
+      if (typeof task?.cancel === 'function') {
+        task.cancel();
+      }
+    };
+  }, [navigation]);
+
+  return <DashboardScreen {...props} />;
+}
+
 // Main tab navigator
 function MainTabs() {
   const { theme } = useTheme();
@@ -59,6 +98,10 @@ function MainTabs() {
     <Tab.Navigator
       screenListeners={{ tabPress: () => haptics.action() }}
       screenOptions={({ route }) => ({
+        // Keep Home first paint light; DashboardTab preloads the rest immediately after.
+        lazy: true,
+        // Avoid freeze/thaw hitch when returning to an already-mounted tab.
+        freezeOnBlur: false,
         tabBarButton: (props) => (
           <TouchableOpacity
             {...props}
@@ -122,7 +165,7 @@ function MainTabs() {
     >
       <Tab.Screen 
         name="Dashboard" 
-        component={DashboardScreen}
+        component={DashboardTab}
         options={{
           title: 'Home',
           tabBarLabel: 'Home',

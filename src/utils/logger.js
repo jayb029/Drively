@@ -199,8 +199,8 @@ export const logger = {
 /**
  * Log user actions for debugging user flows
  */
-export async function logUserAction(action, screen, data = null) {
-  await log(`User action: ${action}`, LOG_LEVELS.INFO, `SCREEN_${screen}`, data);
+export function logUserAction(action, screen, data = null) {
+  log(`User action: ${action}`, LOG_LEVELS.INFO, `SCREEN_${screen}`, data).catch(() => undefined);
 }
 
 /**

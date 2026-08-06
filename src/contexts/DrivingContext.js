@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
-import { loadData, saveData, setCloudBackupEnabled as persistCloudBackupSetting } from '../utils/storage';
+import { loadData, preloadData, saveData, setCloudBackupEnabled as persistCloudBackupSetting } from '../utils/storage';
 import { logger, logError } from '../utils/logger';
 import { getAppVersion } from '../utils/appInfo';
 import { normalizeDriveNightFields, sumDriveMinutes } from '../utils/nightDriving';
@@ -282,8 +282,16 @@ export function DrivingProvider({ children }) {
         } else {
           console.log('Loading app data (logger not ready)');
         }
-        
-        const data = await loadData();
+
+        // Prefer preloaded cache; force a disk read if preload never populated it.
+        // Always go through loadData so backup/alternate recovery can run.
+        let data = await preloadData().catch(() => null);
+        if (!data) {
+          data = await loadData({ force: true });
+        } else if (!data.user?.onboardingComplete && !(data.drives?.length > 0)) {
+          // Empty-looking cache: re-read disk in case a prior crash cached defaults.
+          data = await loadData({ force: true });
+        }
         
         // Check if we need to reset monthly freeze counter
         if (shouldResetMonthlyFreezeCounter(data.streaks?.lastFreezeReset)) {
@@ -292,11 +300,15 @@ export function DrivingProvider({ children }) {
           } else {
             console.log('Resetting monthly freeze counter');
           }
-          
-          data.streaks = {
-            ...data.streaks,
-            freezeDaysThisMonth: 0,
-            lastFreezeReset: formatDateForStorage(),
+
+          // Avoid mutating the shared memory cache object in place.
+          data = {
+            ...data,
+            streaks: {
+              ...data.streaks,
+              freezeDaysThisMonth: 0,
+              lastFreezeReset: formatDateForStorage(),
+            },
           };
         }
         
@@ -313,6 +325,8 @@ export function DrivingProvider({ children }) {
         }
         
         console.error('Failed to load data:', error);
+        // Critical: never autosave this empty shell over real on-disk data.
+        skipNextPersistenceRef.current = true;
         dispatch({ 
           type: ACTIONS.LOAD_DATA, 
           payload: { ...initialState, loading: false, error: error.message } 
@@ -328,7 +342,8 @@ export function DrivingProvider({ children }) {
       if (nextState !== 'active' || state.loading) return;
 
       try {
-        const data = await loadData();
+        // Force disk re-read so a stale empty memory cache cannot hide backup recovery.
+        const data = await loadData({ force: true });
         skipNextPersistenceRef.current = true;
         dispatch({ type: ACTIONS.LOAD_DATA, payload: data });
       } catch (error) {
@@ -342,6 +357,7 @@ export function DrivingProvider({ children }) {
   // Save data whenever state changes (except loading)
   useEffect(() => {
     if (state.loading) return;
+    if (state.error) return;
     if (skipNextPersistenceRef.current) {
       skipNextPersistenceRef.current = false;
       return;
@@ -376,7 +392,7 @@ export function DrivingProvider({ children }) {
           await logError(error, 'DRIVING_CONTEXT', 'Failed to save data automatically');
         });
     }, 250);
-  }, [state.user, state.supervisorProfiles, state.drives, state.detectedEvents, state.streaks, state.settings, state.loading]);
+  }, [state.user, state.supervisorProfiles, state.drives, state.detectedEvents, state.streaks, state.settings, state.loading, state.error]);
 
   // Context value with actions
   const buildPersistedData = (overrides = {}) => ({

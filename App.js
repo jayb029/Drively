@@ -7,12 +7,17 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { PaperProvider } from 'react-native-paper';
 import { DrivingProvider } from './src/contexts/DrivingContext';
 import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
-import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { ThemeProvider, preloadThemePreference, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
 import { configureDriveNotifications } from './src/services/driveDetection';
 import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/services/drivePip';
 import { downloadOtaUpdateInBackground } from './src/services/otaUpdater';
+import { preloadData } from './src/utils/storage';
+
+// Preload data and theme into memory as early as possible
+preloadData().catch(() => undefined);
+preloadThemePreference().catch(() => undefined);
 
 function AppContent() {
   const { theme, isDark, isLoading, paperTheme } = useTheme();
