@@ -78,7 +78,10 @@ function AppContent() {
 
     setupLogger();
     downloadOtaUpdateInBackground().catch((error) => {
-      logError(error, 'OTA_UPDATER', 'Background OTA update failed');
+      logError(error, 'OTA_UPDATER', {
+        context: 'Background OTA update failed',
+        diagnostics: error?.diagnostics || null,
+      });
     });
   }, []);
 

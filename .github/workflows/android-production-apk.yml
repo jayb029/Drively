@@ -108,6 +108,29 @@ jobs:
           VERSION_CODE: ${{ steps.release.outputs.version_code }}
         run: npm run version:set -- "$VERSION_NAME" "$VERSION_CODE"
 
+      # EAS Build injects the channel from eas.json. Local/Gradle builds must already
+      # embed expo-channel-name or checkForUpdateAsync fails with "Failed to check for update".
+      - name: Verify Expo OTA channel is embedded for production APKs
+        shell: bash
+        run: |
+          CHANNEL="$(node -p "require('./app.json').expo.updates?.requestHeaders?.['expo-channel-name'] || ''")"
+          if [[ "$CHANNEL" != "production" ]]; then
+            echo "app.json must set expo.updates.requestHeaders['expo-channel-name'] to production for GitHub APK builds."
+            exit 1
+          fi
+
+          if ! grep -Fq 'expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY' android/app/src/main/AndroidManifest.xml; then
+            echo "AndroidManifest.xml is missing UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY (expo-channel-name)."
+            exit 1
+          fi
+
+          if ! grep -Fq 'expo-channel-name' android/app/src/main/AndroidManifest.xml; then
+            echo "AndroidManifest.xml must include expo-channel-name in the updates request headers meta-data."
+            exit 1
+          fi
+
+          echo "OTA channel configuration looks good (production)."
+
       - name: Restore upload keystore
         shell: bash
         env:

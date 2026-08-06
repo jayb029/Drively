@@ -6,13 +6,17 @@ This app is enrolled in EAS Update using `expo-updates`.
 
 - EAS project ID: `3fc48f4e-d36f-4c74-aba9-2f6d337412a4`
 - Update URL: `https://u.expo.dev/3fc48f4e-d36f-4c74-aba9-2f6d337412a4`
-- Android runtime version is currently `1.2`.
+- Android runtime version tracks the app version string (currently in `app.json` / `expo_runtime_version`).
+- Production APKs must request the `production` channel via `updates.requestHeaders["expo-channel-name"]`.
+- EAS Build injects the channel from `eas.json` automatically. GitHub Action / local Gradle builds do **not** — the channel is baked into:
+  - `app.json` → `expo.updates.requestHeaders`
+  - `android/app/src/main/AndroidManifest.xml` → `expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY`
 - EAS build channels are configured in `eas.json`:
   - `development`
   - `preview`
   - `production`
 
-OTA updates can ship JavaScript, styling, and bundled assets. Native changes still require a new build, including new native dependencies, permission/config changes, SDK upgrades, and runtime-version changes.
+OTA updates can ship JavaScript, styling, and bundled assets. Native changes still require a new build, including new native dependencies, permission/config changes, SDK upgrades, and runtime-version changes. Missing `expo-channel-name` in a native build also requires a new APK (OTA cannot fix it).
 
 Update the app version across Expo, package metadata, package lock metadata, and Android native version/runtime strings with:
 
