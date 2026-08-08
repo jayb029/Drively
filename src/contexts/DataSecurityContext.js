@@ -2,17 +2,23 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { AppState } from 'react-native';
 import {
   canUseBiometrics,
+  changeEncryptionPasscode,
   chooseUnencryptedStorage,
   configureEncryption,
   getEncryptionMetadata,
   lockEncryption,
   migrateTransientDataToEncryption,
+  migrateTransientDataFromEncryption,
   requestEncryptionSetup,
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
 } from '../utils/dataEncryption';
-import { rewriteCurrentDataForEncryption } from '../utils/storage';
+import {
+  rewriteCurrentDataForEncryption,
+  rewriteCurrentDataWithoutEncryption,
+  syncCurrentEncryptionRecoveryMetadata,
+} from '../utils/storage';
 
 const DataSecurityContext = createContext(null);
 
@@ -84,6 +90,18 @@ export function DataSecurityProvider({ children }) {
       const next = await setBiometricUnlockEnabled(enabled);
       setMetadata(next);
     },
+    changePasscode: async (passcode) => {
+      const next = await changeEncryptionPasscode(passcode);
+      await syncCurrentEncryptionRecoveryMetadata(next);
+      setMetadata(next);
+    },
+    disableEncryption: async () => {
+      await rewriteCurrentDataWithoutEncryption();
+      await migrateTransientDataFromEncryption();
+      const next = await chooseUnencryptedStorage();
+      setMetadata(next);
+      setUnlocked(true);
+    },
   }), [biometricsAvailable, metadata, unlocked]);
 
   return <DataSecurityContext.Provider value={value}>{children}</DataSecurityContext.Provider>;
@@ -98,6 +116,8 @@ export function useDataSecurity() {
     unlocked: true,
     biometricsAvailable: false,
     beginEncryptionSetup: async () => undefined,
+    changePasscode: async () => undefined,
+    disableEncryption: async () => undefined,
     requireReauthentication: async () => true,
     setBiometricsEnabled: async () => undefined,
   };

@@ -26,6 +26,7 @@ jest.mock('expo-secure-store', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   canUseBiometrics,
+  changeEncryptionPasscode,
   chooseUnencryptedStorage,
   configureEncryption,
   createEncryptionRecoveryMetadata,
@@ -35,6 +36,7 @@ import {
   hasEncryptionKey,
   isEncryptedDataString,
   lockEncryption,
+  migrateTransientDataFromEncryption,
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
@@ -72,6 +74,27 @@ describe('data encryption', () => {
     expect((await getEncryptionMetadata()).kdf.iterations).toBe(100000);
     lockEncryption();
     await expect(unlockWithPasscode('4826')).resolves.toBe(true);
+  });
+
+  it('changes the passcode without changing the encrypted data key', async () => {
+    await configureEncryption('4826', false);
+    const encrypted = encryptDataString(JSON.stringify({ driverName: 'Private driver' }));
+
+    await changeEncryptionPasscode('7391');
+    lockEncryption();
+    await expect(unlockWithPasscode('4826')).resolves.toBe(false);
+    await expect(unlockWithPasscode('7391')).resolves.toBe(true);
+    expect(JSON.parse(decryptDataString(encrypted))).toEqual({ driverName: 'Private driver' });
+  });
+
+  it('rewrites encrypted transient drive state as plaintext before opting out', async () => {
+    await configureEncryption('4826', false);
+    const transient = JSON.stringify({ active: true, destination: 'Private destination' });
+    await AsyncStorage.setItem('drively.activeDrive.state.v1', encryptDataString(transient));
+
+    await migrateTransientDataFromEncryption();
+
+    expect(await AsyncStorage.getItem('drively.activeDrive.state.v1')).toBe(transient);
   });
 
   it('supports an authenticated device-bound biometric key and opting out', async () => {

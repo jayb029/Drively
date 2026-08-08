@@ -4,7 +4,14 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
 
-export default function ReauthenticationModal({ visible, onCancel, onSuccess }) {
+export default function ReauthenticationModal({
+  body = 'Confirm your identity before Drively creates the full plaintext JSON backup.',
+  confirmLabel = 'Unlock and continue',
+  title = 'Unlock to export backup',
+  visible,
+  onCancel,
+  onSuccess,
+}) {
   const security = useDataSecurity();
   const { theme } = useTheme();
   const [passcode, setPasscode] = useState('');
@@ -30,8 +37,8 @@ export default function ReauthenticationModal({ visible, onCancel, onSuccess }) 
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
       <View style={styles.backdrop}>
         <View style={[styles.dialog, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
-          <Text style={[styles.title, { color: theme.colors.text.primary }]}>Unlock to export backup</Text>
-          <Text style={[styles.body, { color: theme.colors.text.secondary }]}>Confirm your identity before Drively creates the full plaintext JSON backup.</Text>
+          <Text style={[styles.title, { color: theme.colors.text.primary }]}>{title}</Text>
+          <Text style={[styles.body, { color: theme.colors.text.secondary }]}>{body}</Text>
           <TextInput
             autoFocus
             editable={!busy}
@@ -46,7 +53,7 @@ export default function ReauthenticationModal({ visible, onCancel, onSuccess }) 
           />
           {!!error && <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
           <TouchableOpacity disabled={busy || passcode.length < 4} onPress={() => authenticate(false)} style={[styles.primary, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.primaryText}>Unlock and continue</Text>
+            <Text style={styles.primaryText}>{confirmLabel}</Text>
           </TouchableOpacity>
           {security.metadata?.biometricEnabled && (
             <TouchableOpacity disabled={busy} onPress={() => authenticate(true)} style={[styles.secondary, { borderColor: theme.colors.border.light }]}>
@@ -77,4 +84,3 @@ const styles = StyleSheet.create({
   cancel: { alignItems: 'center', marginTop: 4, paddingVertical: 11 },
   cancelText: { fontSize: 14 },
 });
-

@@ -25,6 +25,7 @@ import AboutSettingsScreen from '../screens/AboutSettingsScreen';
 import DiagnosticsSettingsScreen from '../screens/DiagnosticsSettingsScreen';
 import WeatherSettingsScreen from '../screens/WeatherSettingsScreen';
 import NightDrivingSettingsScreen from '../screens/NightDrivingSettingsScreen';
+import EncryptionSettingsScreen from '../screens/EncryptionSettingsScreen';
 
 // Context
 import { useDriving } from '../contexts/DrivingContext';
@@ -295,6 +296,7 @@ function AppNavigator() {
             <Stack.Screen name="DriverProfile" component={DriverProfileSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="DriveTracking" component={DriveTrackingSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="DataSettings" component={DataSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="EncryptionSettings" component={EncryptionSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AboutSettings" component={AboutSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Diagnostics" component={DiagnosticsSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="WeatherSettings" component={WeatherSettingsScreen} options={{ headerShown: false }} />

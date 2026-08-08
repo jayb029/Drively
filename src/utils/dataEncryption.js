@@ -175,6 +175,23 @@ export async function chooseUnencryptedStorage() {
   return metadata;
 }
 
+export async function changeEncryptionPasscode(passcode) {
+  if (!/^\d{4,}$/.test(passcode)) throw new Error('Passcode must contain at least 4 digits.');
+  const metadata = await getEncryptionMetadata();
+  if (!metadata.enabled || !hasEncryptionKey()) throw new Error('Unlock Drively first.');
+
+  const salt = Crypto.getRandomBytes(16);
+  const passcodeKey = await derivePasscodeKey(passcode, salt);
+  const next = {
+    ...metadata,
+    salt: bytesToBase64(salt),
+    wrappedKey: encryptBytes(sessionKey, passcodeKey),
+    kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
+  };
+  await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
+  return next;
+}
+
 export async function requestEncryptionSetup() {
   const metadata = { configured: false, enabled: null, biometricEnabled: false };
   await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(metadata));
@@ -272,6 +289,15 @@ export async function migrateTransientDataToEncryption() {
     const raw = await AsyncStorage.getItem(key);
     if (!raw || isEncryptedDataString(raw)) return;
     await AsyncStorage.setItem(key, encryptDataString(raw));
+  }));
+}
+
+export async function migrateTransientDataFromEncryption() {
+  const keys = ['drively.activeDrive.state.v1', 'drively.detector.state.v1'];
+  await Promise.all(keys.map(async (key) => {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw || !isEncryptedDataString(raw)) return;
+    await AsyncStorage.setItem(key, decryptDataString(raw));
   }));
 }
 

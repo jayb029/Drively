@@ -144,6 +144,7 @@ const screens = [
   ['Appearance settings', require('../src/screens/AppearanceSettingsScreen').default],
   ['Dashboard', require('../src/screens/DashboardScreen').default],
   ['Data settings', require('../src/screens/DataSettingsScreen').default],
+  ['Encryption settings', require('../src/screens/EncryptionSettingsScreen').default],
   ['Diagnostics settings', require('../src/screens/DiagnosticsSettingsScreen').default],
   ['Drive history', require('../src/screens/DriveHistoryScreen').default],
   ['Drive tracking settings', require('../src/screens/DriveTrackingSettingsScreen').default],

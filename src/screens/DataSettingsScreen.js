@@ -30,7 +30,6 @@ export default function DataSettingsScreen({ navigation }) {
     user,
   } = driving;
   const [changingCloudBackup, setChangingCloudBackup] = useState(false);
-  const [changingBiometrics, setChangingBiometrics] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
   const [importCategories, setImportCategories] = useState({
     driver: true,
@@ -130,30 +129,14 @@ export default function DataSettingsScreen({ navigation }) {
       <SettingsSection title="Data protection">
         <SettingsActionRow
           label="Local data encryption"
-          onPress={security.metadata?.enabled ? undefined : security.beginEncryptionSetup}
+          onPress={security.metadata?.enabled
+            ? () => navigation.navigate('EncryptionSettings')
+            : security.beginEncryptionSetup}
           subtitle={security.metadata?.enabled
             ? 'Profiles, drives, settings, and location-derived records are encrypted at rest.'
             : 'Off. Encryption is strongly recommended for this logbook.'}
-          value={security.metadata?.enabled ? 'On' : 'Set up'}
+          value={security.metadata?.enabled ? 'Manage' : 'Set up'}
         />
-        {security.metadata?.enabled && security.biometricsAvailable && (
-          <SettingsSwitchRow
-            disabled={changingBiometrics}
-            label="Biometric unlock"
-            onValueChange={async (enabled) => {
-              setChangingBiometrics(true);
-              try {
-                await security.setBiometricsEnabled(enabled);
-              } catch {
-                Alert.alert('Setting not changed', 'Drively could not update biometric unlock on this device.');
-              } finally {
-                setChangingBiometrics(false);
-              }
-            }}
-            subtitle="Use this device's fingerprint or face authentication instead of entering the passcode."
-            value={!!security.metadata.biometricEnabled}
-          />
-        )}
       </SettingsSection>
       <SettingsSection title="Backups">
         {Platform.OS === 'android' && (

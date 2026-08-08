@@ -305,6 +305,15 @@ async function syncEncryptionRecoveryMetadata(directory, metadata = null) {
   }
 }
 
+export async function syncCurrentEncryptionRecoveryMetadata(metadata) {
+  if (Platform.OS === 'web') return true;
+  const cloudBackupEnabled = await getCloudBackupPreference();
+  const { directory } = getDataPaths(cloudBackupEnabled);
+  await ensureDirectoryExists(directory);
+  await syncEncryptionRecoveryMetadata(directory, metadata);
+  return true;
+}
+
 async function writeDataPair(data, cloudBackupEnabled) {
   const paths = getDataPaths(cloudBackupEnabled);
   await ensureDirectoryExists(paths.directory);
@@ -524,6 +533,35 @@ export async function rewriteCurrentDataForEncryption() {
   await deleteIfExists(LEGACY_MAIN_DATA_FILE);
   await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
   memoryDataCache = migrateData(data);
+  return true;
+}
+
+/** Rewrite every active data copy as plaintext before encryption is disabled. */
+export async function rewriteCurrentDataWithoutEncryption() {
+  if (Platform.OS === 'web') {
+    const raw = await AsyncStorage.getItem(WEB_DATA_KEY);
+    if (!raw) return true;
+    const data = migrateData(JSON.parse(decryptDataString(raw)));
+    await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(data));
+    memoryDataCache = data;
+    return true;
+  }
+
+  const cloudBackupEnabled = await getCloudBackupPreference();
+  if (!cloudBackupEnabled) await migrateLegacyStorageToLocal();
+  const paths = getDataPaths(cloudBackupEnabled);
+  const data = await readJsonDataFile(paths.mainFile) || await readJsonDataFile(paths.backupFile);
+  if (data) {
+    const normalizedData = migrateData(data);
+    const plaintext = JSON.stringify(normalizedData);
+    await ensureDirectoryExists(paths.directory);
+    await FileSystem.writeAsStringAsync(paths.mainFile, plaintext);
+    await FileSystem.writeAsStringAsync(paths.backupFile, plaintext);
+    memoryDataCache = normalizedData;
+  }
+  await deleteIfExists(`${paths.directory}${ENCRYPTION_RECOVERY_FILE_NAME}`);
+  await deleteIfExists(LEGACY_MAIN_DATA_FILE);
+  await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
   return true;
 }
 
