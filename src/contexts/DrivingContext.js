@@ -89,7 +89,7 @@ function drivingReducer(state, action) {
         ...state,
         ...action.payload,
         loading: false,
-        error: null,
+        error: action.payload?.error || null,
       };
 
     case ACTIONS.SET_USER_INFO:

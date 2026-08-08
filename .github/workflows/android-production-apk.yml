@@ -102,11 +102,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install website dependencies
+        run: npm --prefix website ci
+
       - name: Apply release version
         env:
           VERSION_NAME: ${{ steps.release.outputs.version_name }}
           VERSION_CODE: ${{ steps.release.outputs.version_code }}
         run: npm run version:set -- "$VERSION_NAME" "$VERSION_CODE"
+
+      - name: Run fast regression gate
+        run: npm run test:fast
+
+      - name: Run Expo and website build gate
+        run: npm run test:build
+
+      - name: Run Android native compilation gate
+        run: npm run test:native
 
       # EAS Build injects the channel from eas.json. Local/Gradle builds must already
       # embed expo-channel-name or checkForUpdateAsync fails with "Failed to check for update".

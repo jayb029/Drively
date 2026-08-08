@@ -28,6 +28,7 @@ credentials.json
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+.test-results/
 
 # macOS
 .DS_Store

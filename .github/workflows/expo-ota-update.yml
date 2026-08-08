@@ -59,8 +59,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify Android JavaScript and assets export
-        run: npx expo export --platform android
+      - name: Install website dependencies
+        run: npm --prefix website ci
+
+      - name: Run fast regression gate
+        run: npm run test:fast
+
+      - name: Run Expo and website build gate
+        run: npm run test:build
 
       - name: Publish OTA update
         env:

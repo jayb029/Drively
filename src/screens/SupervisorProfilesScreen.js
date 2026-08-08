@@ -418,10 +418,20 @@ export default function SupervisorProfilesScreen({ navigation }) {
                     </Text>
                   </View>
                   <View style={styles.profileActions}>
-                    <TouchableOpacity style={styles.iconButton} onPress={() => startEdit(profile)}>
+                    <TouchableOpacity
+                      accessibilityLabel={`Edit ${profile.name}`}
+                      accessibilityRole="button"
+                      style={styles.iconButton}
+                      onPress={() => startEdit(profile)}
+                    >
                       <Icon name="pencil-outline" size={19} color={theme.colors.primary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.iconButton} onPress={() => confirmDelete(profile)}>
+                    <TouchableOpacity
+                      accessibilityLabel={`Delete ${profile.name}`}
+                      accessibilityRole="button"
+                      style={styles.iconButton}
+                      onPress={() => confirmDelete(profile)}
+                    >
                       <Icon name="trash-can-outline" size={19} color={theme.colors.error} />
                     </TouchableOpacity>
                   </View>
@@ -444,6 +454,8 @@ export default function SupervisorProfilesScreen({ navigation }) {
             <Text style={styles.modalText}>Have the supervisor sign below. The signature is saved with this profile.</Text>
 
             <View
+              accessible
+              accessibilityLabel="Supervisor signature pad"
               style={styles.signaturePad}
               onLayout={(event) => setDraftSignatureWidth(Math.max(1, event.nativeEvent.layout.width))}
               {...panResponder.panHandlers}

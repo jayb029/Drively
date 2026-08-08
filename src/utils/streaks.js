@@ -2,6 +2,14 @@
  * Utility functions for calculating and managing streaks
  */
 
+function parseDriveDate(value) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(value);
+}
+
 /**
  * Calculate the current streak based on drive dates
  * @param {Array} drives - Array of drive objects with date property
@@ -16,7 +24,7 @@ export function calculateCurrentStreak(drives) {
   // Sort drives by date (most recent first)
   const sortedDrives = drives
     .filter(drive => drive.date)
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    .sort((a, b) => parseDriveDate(b.date) - parseDriveDate(a.date));
 
   if (sortedDrives.length === 0) {
     return 0;
@@ -35,7 +43,7 @@ export function calculateCurrentStreak(drives) {
   let checkDate = new Date(today);
 
   for (const dateStr of uniqueDates) {
-    const driveDate = new Date(dateStr);
+    const driveDate = parseDriveDate(dateStr);
     driveDate.setHours(0, 0, 0, 0);
 
     // Check if this drive date matches our current check date or yesterday
@@ -65,8 +73,8 @@ export function calculateLongestStreak(drives) {
   // Get unique drive dates and sort them
   const uniqueDates = [...new Set(drives.map(drive => drive.date))]
     .filter(date => date)
-    .sort((a, b) => new Date(a) - new Date(b))
-    .map(dateStr => new Date(dateStr));
+    .sort((a, b) => parseDriveDate(a) - parseDriveDate(b))
+    .map(parseDriveDate);
 
   if (uniqueDates.length === 0) {
     return 0;
@@ -116,7 +124,7 @@ export function shouldResetMonthlyFreezeCounter(lastResetDate) {
     return true;
   }
 
-  const lastReset = new Date(lastResetDate);
+  const lastReset = parseDriveDate(lastResetDate);
   const now = new Date();
   
   return lastReset.getMonth() !== now.getMonth() || 
@@ -142,7 +150,7 @@ export function getDaysSinceLastDrive(lastDriveDate) {
     return 0;
   }
 
-  const lastDrive = new Date(lastDriveDate);
+  const lastDrive = parseDriveDate(lastDriveDate);
   const today = new Date();
   
   lastDrive.setHours(0, 0, 0, 0);

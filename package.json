@@ -7,6 +7,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "test": "node scripts/test-all.js --gate=all",
+    "test:fast": "node scripts/test-all.js --gate=fast",
+    "test:build": "node scripts/test-all.js --gate=build",
+    "test:native": "node scripts/test-all.js --gate=native",
+    "test:runtime": "jest --runInBand --coverage",
     "test:apk-updater": "node scripts/test-apk-updater.js",
     "test:night-driving": "node scripts/test-night-driving.js",
     "test:storage": "node scripts/test-storage.js",
@@ -54,7 +59,10 @@
   "devDependencies": {
     "@babel/core": "7.29.7",
     "@babel/plugin-transform-modules-commonjs": "7.29.7",
+    "@testing-library/react-native": "^14.0.1",
+    "jest-expo": "~57.0.3",
     "patch-package": "8.0.1",
+    "react-test-renderer": "^19.2.8",
     "sharp": "0.35.3"
   },
   "overrides": {

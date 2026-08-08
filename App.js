@@ -29,22 +29,27 @@ function AppContent() {
     const setupLogger = async () => {
       try {
         // Add timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Logger setup timeout')), 2000)
-        );
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Logger setup timeout')), 2000);
+        });
 
-        await Promise.race([
-          (async () => {
-            await initializeLogger();
-            await logger.info('App started successfully', 'APP_STARTUP');
-            
-            // Schedule automatic log cleanup
-            await scheduleLogCleanup();
-            await logger.info('Log cleanup scheduler initialized', 'APP_STARTUP');
-            await configureDriveNotifications();
-          })(),
-          timeoutPromise
-        ]);
+        try {
+          await Promise.race([
+            (async () => {
+              await initializeLogger();
+              await logger.info('App started successfully', 'APP_STARTUP');
+
+              // Schedule automatic log cleanup
+              await scheduleLogCleanup();
+              await logger.info('Log cleanup scheduler initialized', 'APP_STARTUP');
+              await configureDriveNotifications();
+            })(),
+            timeoutPromise
+          ]);
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         // Set up global error handler (only in development)
         if (__DEV__) {

@@ -15,6 +15,13 @@ import {
   getNightCalculationLabel,
 } from './nightDriving';
 
+const escapeHTML = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /**
  * Generate HTML content for a comprehensive driving report
  * @param {Object} data - The driving data object
@@ -45,13 +52,6 @@ export const generateDrivingReportHTML = (data, isOfficial = false, options = {}
     dateOfBirth: user.dateOfBirth || user.birthDate || user.dob || '',
     permitNumber: user.permitNumber || user.licenseNumber || '',
   };
-
-  const escapeHTML = (value) => String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 
   const formatRequiredHours = (value) => {
     const numericValue = Number(value);
