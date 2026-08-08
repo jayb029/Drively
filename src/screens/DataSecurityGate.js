@@ -1,5 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
@@ -14,6 +25,7 @@ export default function DataSecurityGate() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const automaticBiometricAttempted = useRef(false);
+  const confirmationRef = useRef(null);
   const isSetup = security.metadata?.configured === false;
 
   useEffect(() => {
@@ -26,10 +38,15 @@ export default function DataSecurityGate() {
 
   if (!security.metadata) return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
 
+  const updatePasscode = (value, setter) => {
+    setter(value.replace(/\D/g, ''));
+    if (error) setError('');
+  };
+
   const submit = async () => {
     setError('');
     if (!/^\d{4,}$/.test(passcode)) {
-      setError('Use at least 4 digits.');
+      setError('Enter a passcode with at least 4 digits.');
       return;
     }
     if (isSetup && passcode !== confirmation) {
@@ -64,104 +81,187 @@ export default function DataSecurityGate() {
 
   const skip = () => Alert.alert(
     'Keep data unencrypted?',
-    'Your logbook may include identity and location-derived information. Encryption is strongly recommended.',
+    'Profiles, drive history, settings, and location-derived records will be stored without Drively encryption.',
     [
       { text: 'Go back', style: 'cancel' },
       { text: 'Use without encryption', style: 'destructive', onPress: security.skipEncryption },
     ]
   );
 
+  const inputColors = {
+    backgroundColor: theme.colors.surfaceSecondary,
+    borderColor: error ? theme.colors.error : theme.colors.border.medium,
+    color: theme.colors.text.primary,
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-        <View style={styles.content}>
-          <Icon name="shield-lock-outline" size={34} color={theme.colors.primary} />
-          <Text style={[styles.title, { color: theme.colors.text.primary }]}>{isSetup ? 'Protect your logbook' : 'Unlock Drively'}</Text>
-          <Text style={[styles.body, { color: theme.colors.text.secondary }]}>
-            {isSetup
-              ? 'Drively can encrypt profiles, drives, settings, and location-derived records before they are stored on this device.'
-              : 'Enter your passcode to decrypt the logbook on this device.'}
-          </Text>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
+            <View style={[styles.securityMark, { backgroundColor: theme.colors.primary }]}>
+              <Icon name={isSetup ? 'shield-lock-outline' : 'lock-outline'} size={28} color={theme.colors.text.inverse} />
+            </View>
 
-          <Text style={[styles.label, { color: theme.colors.text.primary }]}>Passcode</Text>
-          <TextInput
-            autoFocus={!security.metadata?.biometricEnabled}
-            editable={!busy}
-            keyboardType="number-pad"
-            maxLength={16}
-            onChangeText={(value) => setPasscode(value.replace(/\D/g, ''))}
-            onSubmitEditing={isSetup ? undefined : submit}
-            placeholder="At least 4 digits"
-            placeholderTextColor={theme.colors.text.light}
-            secureTextEntry
-            style={[styles.input, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light, color: theme.colors.text.primary }]}
-            value={passcode}
-          />
-          {isSetup && (
-            <>
-              <Text style={[styles.label, { color: theme.colors.text.primary }]}>Confirm passcode</Text>
+            <Text style={[styles.title, { color: theme.colors.text.primary }]}>
+              {isSetup ? 'Protect your Drively data' : 'Drively is locked'}
+            </Text>
+            <Text style={[styles.body, { color: theme.colors.text.secondary }]}>
+              {isSetup
+                ? 'Create a passcode to encrypt your profiles, drives, settings, and location-derived records on this device.'
+                : 'Your data is encrypted. Unlock it to continue to Drively.'}
+            </Text>
+
+            {isSetup && (
+              <View style={[styles.protectionSummary, { borderColor: theme.colors.border.light }]}>
+                <ProtectionRow icon="cellphone-lock" text="Stored data is encrypted on this device" theme={theme} />
+                <View style={[styles.rowDivider, { backgroundColor: theme.colors.border.light }]} />
+                <ProtectionRow icon="key-outline" text="Your passcode cannot be recovered by Drively" theme={theme} />
+              </View>
+            )}
+
+            <View style={styles.form}>
+              <Text style={[styles.label, { color: theme.colors.text.primary }]}>
+                {isSetup ? 'Create passcode' : 'Passcode'}
+              </Text>
               <TextInput
+                accessibilityLabel={isSetup ? 'Create passcode' : 'Passcode'}
+                autoFocus={!security.metadata?.biometricEnabled}
                 editable={!busy}
                 keyboardType="number-pad"
                 maxLength={16}
-                onChangeText={(value) => setConfirmation(value.replace(/\D/g, ''))}
-                onSubmitEditing={submit}
+                onChangeText={(value) => updatePasscode(value, setPasscode)}
+                onSubmitEditing={isSetup ? () => confirmationRef.current?.focus() : submit}
+                placeholder="4 digits or more"
+                placeholderTextColor={theme.colors.text.light}
+                returnKeyType={isSetup ? 'next' : 'done'}
                 secureTextEntry
-                style={[styles.input, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light, color: theme.colors.text.primary }]}
-                value={confirmation}
+                style={[styles.input, inputColors]}
+                value={passcode}
               />
-            </>
-          )}
-          {!!error && <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
 
-          {isSetup && security.biometricsAvailable && (
-            <View style={[styles.biometricRow, { borderColor: theme.colors.border.light }]}>
-              <View style={styles.biometricCopy}>
-                <Text style={[styles.biometricTitle, { color: theme.colors.text.primary }]}>Biometric unlock</Text>
-                <Text style={[styles.biometricBody, { color: theme.colors.text.secondary }]}>Use this device's fingerprint or face authentication.</Text>
-              </View>
-              <Switch value={useBiometrics} onValueChange={setUseBiometrics} />
+              {isSetup && (
+                <>
+                  <Text style={[styles.label, styles.confirmLabel, { color: theme.colors.text.primary }]}>Confirm passcode</Text>
+                  <TextInput
+                    ref={confirmationRef}
+                    accessibilityLabel="Confirm passcode"
+                    editable={!busy}
+                    keyboardType="number-pad"
+                    maxLength={16}
+                    onChangeText={(value) => updatePasscode(value, setConfirmation)}
+                    onSubmitEditing={submit}
+                    returnKeyType="done"
+                    secureTextEntry
+                    style={[styles.input, inputColors]}
+                    value={confirmation}
+                  />
+                </>
+              )}
+
+              {!!error && (
+                <View accessibilityLiveRegion="polite" style={styles.errorRow}>
+                  <Icon name="alert-circle-outline" size={17} color={theme.colors.error} />
+                  <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>
+                </View>
+              )}
             </View>
-          )}
 
-          <TouchableOpacity disabled={busy} onPress={submit} style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}>
-            <Text style={styles.primaryButtonText}>{busy ? 'Working…' : isSetup ? 'Encrypt my data' : 'Unlock'}</Text>
-          </TouchableOpacity>
-          {!isSetup && security.metadata.biometricEnabled && (
-            <TouchableOpacity disabled={busy} onPress={unlockBiometric} style={[styles.secondaryButton, { borderColor: theme.colors.border.light }]}>
-              <Icon name="fingerprint" size={20} color={theme.colors.primary} />
-              <Text style={[styles.secondaryButtonText, { color: theme.colors.text.primary }]}>Use biometrics</Text>
+            {isSetup && security.biometricsAvailable && (
+              <View style={[styles.biometricRow, { borderColor: theme.colors.border.light }]}>
+                <Icon name="fingerprint" size={24} color={theme.colors.primary} />
+                <View style={styles.biometricCopy}>
+                  <Text style={[styles.biometricTitle, { color: theme.colors.text.primary }]}>Unlock with biometrics</Text>
+                  <Text style={[styles.biometricBody, { color: theme.colors.text.secondary }]}>Use your fingerprint or face after setup.</Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Unlock with biometrics"
+                  disabled={busy}
+                  ios_backgroundColor={theme.colors.switchControl.trackOff}
+                  onValueChange={setUseBiometrics}
+                  thumbColor={useBiometrics ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
+                  trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+                  value={useBiometrics}
+                />
+              </View>
+            )}
+
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={submit}
+              style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}
+            >
+              <Icon name={isSetup ? 'lock-check-outline' : 'lock-open-variant-outline'} size={20} color={theme.colors.text.inverse} />
+              <Text style={[styles.primaryButtonText, { color: theme.colors.text.inverse }]}>
+                {busy ? 'Please wait…' : isSetup ? 'Encrypt and continue' : 'Unlock Drively'}
+              </Text>
             </TouchableOpacity>
-          )}
-          {isSetup && (
-            <TouchableOpacity disabled={busy} onPress={skip} style={styles.skipButton}>
-              <Text style={[styles.skipText, { color: theme.colors.text.secondary }]}>Continue without encryption</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+
+            {!isSetup && security.metadata.biometricEnabled && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={unlockBiometric}
+                style={[styles.secondaryButton, { borderColor: theme.colors.border.medium }]}
+              >
+                <Icon name="fingerprint" size={21} color={theme.colors.primary} />
+                <Text style={[styles.secondaryButtonText, { color: theme.colors.text.primary }]}>Use biometrics</Text>
+              </TouchableOpacity>
+            )}
+
+            {isSetup && (
+              <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={skip} style={styles.skipButton}>
+                <Text style={[styles.skipText, { color: theme.colors.text.secondary }]}>Continue without encryption</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+function ProtectionRow({ icon, text, theme }) {
+  return (
+    <View style={styles.protectionRow}>
+      <Icon name={icon} size={19} color={theme.colors.primary} />
+      <Text style={[styles.protectionText, { color: theme.colors.text.secondary }]}>{text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  container: { flex: 1, justifyContent: 'center' },
-  content: { alignSelf: 'center', maxWidth: 440, paddingHorizontal: 28, width: '100%' },
-  title: { fontSize: 27, fontWeight: '750', letterSpacing: -0.5, marginTop: 18 },
-  body: { fontSize: 15, lineHeight: 22, marginBottom: 26, marginTop: 8 },
-  label: { fontSize: 13, fontWeight: '650', marginBottom: 7, marginTop: 13 },
-  input: { borderRadius: 9, borderWidth: 1, fontSize: 18, letterSpacing: 4, paddingHorizontal: 14, paddingVertical: 13 },
-  error: { fontSize: 13, marginTop: 10 },
-  biometricRow: { alignItems: 'center', borderBottomWidth: 1, borderTopWidth: 1, flexDirection: 'row', marginTop: 22, paddingVertical: 14 },
-  biometricCopy: { flex: 1, paddingRight: 18 },
+  container: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 32 },
+  content: { alignSelf: 'center', maxWidth: 430, paddingHorizontal: 24, width: '100%' },
+  securityMark: { alignItems: 'center', borderRadius: 10, height: 52, justifyContent: 'center', width: 52 },
+  title: { fontSize: 28, fontWeight: '750', letterSpacing: -0.6, marginTop: 20 },
+  body: { fontSize: 15, lineHeight: 22, marginTop: 7 },
+  protectionSummary: { borderBottomWidth: 1, borderTopWidth: 1, marginTop: 24 },
+  protectionRow: { alignItems: 'center', flexDirection: 'row', minHeight: 48, paddingHorizontal: 2 },
+  protectionText: { flex: 1, fontSize: 13, lineHeight: 18, marginLeft: 12 },
+  rowDivider: { height: StyleSheet.hairlineWidth, marginLeft: 33 },
+  form: { marginTop: 25 },
+  label: { fontSize: 13, fontWeight: '650', marginBottom: 8 },
+  confirmLabel: { marginTop: 17 },
+  input: { borderRadius: 8, borderWidth: 1, fontSize: 19, letterSpacing: 5, minHeight: 52, paddingHorizontal: 15, paddingVertical: 12 },
+  errorRow: { alignItems: 'flex-start', flexDirection: 'row', marginTop: 11 },
+  error: { flex: 1, fontSize: 13, lineHeight: 18, marginLeft: 7 },
+  biometricRow: { alignItems: 'center', borderBottomWidth: 1, borderTopWidth: 1, flexDirection: 'row', marginTop: 24, minHeight: 68, paddingVertical: 10 },
+  biometricCopy: { flex: 1, paddingHorizontal: 12 },
   biometricTitle: { fontSize: 15, fontWeight: '650' },
-  biometricBody: { fontSize: 13, lineHeight: 18, marginTop: 3 },
-  primaryButton: { alignItems: 'center', borderRadius: 9, marginTop: 24, paddingVertical: 14 },
-  primaryButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
-  secondaryButton: { alignItems: 'center', borderRadius: 9, borderWidth: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 10, paddingVertical: 13 },
+  biometricBody: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  primaryButton: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', gap: 9, justifyContent: 'center', marginTop: 24, minHeight: 50, paddingHorizontal: 16 },
+  primaryButtonText: { fontSize: 15, fontWeight: '700' },
+  secondaryButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 10, minHeight: 48, paddingHorizontal: 16 },
   secondaryButtonText: { fontSize: 15, fontWeight: '650' },
-  skipButton: { alignItems: 'center', paddingVertical: 16 },
+  skipButton: { alignItems: 'center', marginTop: 6, paddingVertical: 14 },
   skipText: { fontSize: 14, textDecorationLine: 'underline' },
-  disabled: { opacity: 0.6 },
+  disabled: { opacity: 0.55 },
 });
