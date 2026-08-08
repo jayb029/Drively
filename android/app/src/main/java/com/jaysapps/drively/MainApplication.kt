@@ -21,6 +21,7 @@ class MainApplication : Application(), ReactApplication {
   private fun getReactPackages(): List<ReactPackage> =
       PackageList(this).packages.apply {
         add(DrivePipPackage())
+        add(DataEncryptionPackage())
       }
 
   override val reactNativeHost: ReactNativeHost =

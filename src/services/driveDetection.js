@@ -10,6 +10,7 @@ import * as TaskManager from 'expo-task-manager';
 import { loadData, saveData } from '../utils/storage';
 import { formatSpeedFromKmh } from '../utils/units';
 import { isActiveDriveTrackingRunning } from './activeDriveTracking';
+import { decryptDataString, encryptDataString, getEncryptionMetadata } from '../utils/dataEncryption';
 
 export const DRIVE_DETECTION_TASK = 'drively-drive-detection-v1';
 
@@ -44,7 +45,7 @@ async function getDetectorState() {
   }
 
   try {
-    return JSON.parse(raw);
+    return JSON.parse(decryptDataString(raw));
   } catch {
     return {
       movingSince: null,
@@ -56,7 +57,9 @@ async function getDetectorState() {
 }
 
 async function setDetectorState(nextState) {
-  await AsyncStorage.setItem(DETECTOR_STATE_KEY, JSON.stringify(nextState));
+  const plainState = JSON.stringify(nextState);
+  const metadata = await getEncryptionMetadata();
+  await AsyncStorage.setItem(DETECTOR_STATE_KEY, metadata.enabled ? encryptDataString(plainState) : plainState);
 }
 
 function toPoint(location) {

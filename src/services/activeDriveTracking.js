@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { formatDistanceFromKm, formatSpeedFromKmh } from '../utils/units';
 import { updateDrivePipStats } from './drivePip';
+import { decryptDataString, encryptDataString, getEncryptionMetadata } from '../utils/dataEncryption';
 
 export const ACTIVE_DRIVE_TRACKING_TASK = 'drively-active-drive-tracking-v1';
 
@@ -143,7 +144,7 @@ async function getTrackingState() {
   if (!raw) return null;
 
   try {
-    trackingStateCache = JSON.parse(raw);
+    trackingStateCache = JSON.parse(decryptDataString(raw));
     lastTrackingPersistedAt = Date.now();
     return trackingStateCache;
   } catch {
@@ -159,10 +160,14 @@ async function setTrackingState(nextState, { force = false } = {}) {
   }
 
   lastTrackingPersistedAt = now;
-  const serializedState = JSON.stringify(nextState);
+  const plainState = JSON.stringify(nextState);
   trackingStateWriteQueue = trackingStateWriteQueue
     .catch(() => undefined)
-    .then(() => AsyncStorage.setItem(ACTIVE_DRIVE_STATE_KEY, serializedState));
+    .then(async () => {
+      const metadata = await getEncryptionMetadata();
+      const serializedState = metadata.enabled ? encryptDataString(plainState) : plainState;
+      await AsyncStorage.setItem(ACTIVE_DRIVE_STATE_KEY, serializedState);
+    });
   await trackingStateWriteQueue;
 }
 

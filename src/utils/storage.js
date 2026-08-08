@@ -4,6 +4,13 @@ import { Platform } from 'react-native';
 import { getAppVersion } from './appInfo';
 import { getDistanceUnitLabel, getSpeedUnitLabel } from './units';
 import {
+  createEncryptionRecoveryMetadata,
+  decryptDataString,
+  encryptDataString,
+  ENCRYPTION_RECOVERY_FILE_NAME,
+  getEncryptionMetadata,
+} from './dataEncryption';
+import {
   getDriveDayMinutes,
   getDriveNightMinutes,
   getNightCalculationLabel,
@@ -204,12 +211,18 @@ async function readJsonDataFile(uri) {
   try {
     if (!(await fileExists(uri))) return null;
     const raw = await FileSystem.readAsStringAsync(uri);
-    const data = JSON.parse(raw);
+    const data = JSON.parse(decryptDataString(raw));
     return isValidDataShape(data) ? data : null;
   } catch (error) {
     console.warn('Failed to read data file:', uri, error);
     return null;
   }
+}
+
+async function serializeDataForStorage(data) {
+  const serialized = JSON.stringify(data);
+  const metadata = await getEncryptionMetadata();
+  return metadata.enabled ? encryptDataString(serialized) : serialized;
 }
 
 /**
@@ -248,7 +261,7 @@ async function migrateLegacyStorageToLocal() {
       localLayoutVersion: LOCAL_STORAGE_LAYOUT_VERSION,
     },
   });
-  const serializedData = JSON.stringify(migratedData);
+  const serializedData = await serializeDataForStorage(migratedData);
 
   await ensureDirectoryExists(localPaths.directory);
   await FileSystem.writeAsStringAsync(localPaths.mainFile, serializedData);
@@ -281,18 +294,33 @@ async function getCloudBackupPreference() {
   return activeCloudBackup;
 }
 
+async function syncEncryptionRecoveryMetadata(directory, metadata = null) {
+  const currentMetadata = metadata || await getEncryptionMetadata();
+  const recoveryFile = `${directory}${ENCRYPTION_RECOVERY_FILE_NAME}`;
+  const recoveryMetadata = createEncryptionRecoveryMetadata(currentMetadata);
+  if (recoveryMetadata) {
+    await FileSystem.writeAsStringAsync(recoveryFile, recoveryMetadata);
+  } else {
+    await deleteIfExists(recoveryFile);
+  }
+}
+
 async function writeDataPair(data, cloudBackupEnabled) {
   const paths = getDataPaths(cloudBackupEnabled);
   await ensureDirectoryExists(paths.directory);
-  const serializedData = JSON.stringify(migrateData({
+  const metadata = await getEncryptionMetadata();
+  const normalizedData = migrateData({
     ...data,
     settings: {
       ...(data.settings || {}),
       cloudBackupEnabled,
     },
-  }));
+  });
+  const plainData = JSON.stringify(normalizedData);
+  const serializedData = metadata.enabled ? encryptDataString(plainData) : plainData;
   await FileSystem.writeAsStringAsync(paths.mainFile, serializedData);
   await FileSystem.writeAsStringAsync(paths.backupFile, serializedData);
+  await syncEncryptionRecoveryMetadata(paths.directory, metadata);
 }
 
 export async function setCloudBackupEnabled(data, enabled) {
@@ -339,7 +367,7 @@ export async function loadData(options = {}) {
       if (!dataString) {
         result = migrateData(DEFAULT_DATA);
       } else {
-        const data = JSON.parse(dataString);
+        const data = JSON.parse(decryptDataString(dataString));
         if (!isValidDataShape(data)) {
           throw new Error('Invalid data structure');
         }
@@ -412,7 +440,7 @@ async function persistData(data, options = {}) {
         const existingRaw = await AsyncStorage.getItem(WEB_DATA_KEY);
         if (existingRaw) {
           try {
-            const existing = JSON.parse(existingRaw);
+            const existing = JSON.parse(decryptDataString(existingRaw));
             if (hasMeaningfulData(existing)) {
               console.warn('Refusing to overwrite meaningful web data with empty defaults');
               return false;
@@ -422,7 +450,8 @@ async function persistData(data, options = {}) {
           }
         }
       }
-      await AsyncStorage.setItem(WEB_DATA_KEY, JSON.stringify(normalizedData));
+      const serialized = await serializeDataForStorage(normalizedData);
+      await AsyncStorage.setItem(WEB_DATA_KEY, serialized);
       return true;
     } catch (error) {
       console.error('Failed to save web data:', error);
@@ -459,19 +488,43 @@ async function persistData(data, options = {}) {
     // Copying an empty shell into backup would destroy the last good copy.
     const existingMain = await readJsonDataFile(mainFile);
     if (existingMain && hasMeaningfulData(existingMain)) {
-      await FileSystem.writeAsStringAsync(backupFile, JSON.stringify(migrateData(existingMain)));
+      await FileSystem.writeAsStringAsync(backupFile, await serializeDataForStorage(migrateData(existingMain)));
     } else if (!(await fileExists(backupFile)) && existingMain) {
-      await FileSystem.writeAsStringAsync(backupFile, JSON.stringify(migrateData(existingMain)));
+      await FileSystem.writeAsStringAsync(backupFile, await serializeDataForStorage(migrateData(existingMain)));
     }
 
-    const dataString = JSON.stringify(normalizedData);
+    const dataString = await serializeDataForStorage(normalizedData);
     await FileSystem.writeAsStringAsync(mainFile, dataString);
+    await syncEncryptionRecoveryMetadata(directory);
 
     return true;
   } catch (error) {
     console.error('Failed to save data:', error);
     return false;
   }
+}
+
+/** Rewrite the active main/backup pair after encryption is first enabled. */
+export async function rewriteCurrentDataForEncryption() {
+  if (Platform.OS === 'web') {
+    const raw = await AsyncStorage.getItem(WEB_DATA_KEY);
+    if (!raw) return true;
+    const data = JSON.parse(decryptDataString(raw));
+    await AsyncStorage.setItem(WEB_DATA_KEY, await serializeDataForStorage(migrateData(data)));
+    memoryDataCache = migrateData(data);
+    return true;
+  }
+
+  const cloudBackupEnabled = await getCloudBackupPreference();
+  if (!cloudBackupEnabled) await migrateLegacyStorageToLocal();
+  const paths = getDataPaths(cloudBackupEnabled);
+  const data = await readJsonDataFile(paths.mainFile) || await readJsonDataFile(paths.backupFile);
+  if (!data) return true;
+  await writeDataPair(data, cloudBackupEnabled);
+  await deleteIfExists(LEGACY_MAIN_DATA_FILE);
+  await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
+  memoryDataCache = migrateData(data);
+  return true;
 }
 
 export function saveData(data, options = {}) {

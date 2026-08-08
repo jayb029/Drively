@@ -10,10 +10,12 @@ import {
   SettingsSwitchRow,
 } from '../components/SettingsComponents';
 import { useDriving } from '../contexts/DrivingContext';
+import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { clearAllData, importDataFromJSON, mergeImportedData } from '../utils/storage';
 import { logUserAction } from '../utils/logger';
 
 export default function DataSettingsScreen({ navigation }) {
+  const security = useDataSecurity();
   const driving = useDriving();
   const {
     detectedEvents,
@@ -28,6 +30,7 @@ export default function DataSettingsScreen({ navigation }) {
     user,
   } = driving;
   const [changingCloudBackup, setChangingCloudBackup] = useState(false);
+  const [changingBiometrics, setChangingBiometrics] = useState(false);
   const [pendingImport, setPendingImport] = useState(null);
   const [importCategories, setImportCategories] = useState({
     driver: true,
@@ -124,6 +127,34 @@ export default function DataSettingsScreen({ navigation }) {
 
   return (
     <SettingsPage navigation={navigation} title="Data and backups" subtitle="Export, restore, or remove the logbook stored on this device.">
+      <SettingsSection title="Data protection">
+        <SettingsActionRow
+          label="Local data encryption"
+          onPress={security.metadata?.enabled ? undefined : security.beginEncryptionSetup}
+          subtitle={security.metadata?.enabled
+            ? 'Profiles, drives, settings, and location-derived records are encrypted at rest.'
+            : 'Off. Encryption is strongly recommended for this logbook.'}
+          value={security.metadata?.enabled ? 'On' : 'Set up'}
+        />
+        {security.metadata?.enabled && security.biometricsAvailable && (
+          <SettingsSwitchRow
+            disabled={changingBiometrics}
+            label="Biometric unlock"
+            onValueChange={async (enabled) => {
+              setChangingBiometrics(true);
+              try {
+                await security.setBiometricsEnabled(enabled);
+              } catch {
+                Alert.alert('Setting not changed', 'Drively could not update biometric unlock on this device.');
+              } finally {
+                setChangingBiometrics(false);
+              }
+            }}
+            subtitle="Use this device's fingerprint or face authentication instead of entering the passcode."
+            value={!!security.metadata.biometricEnabled}
+          />
+        )}
+      </SettingsSection>
       <SettingsSection title="Backups">
         {Platform.OS === 'android' && (
           <SettingsSwitchRow

@@ -26,6 +26,12 @@
       "expo-file-system",
       "expo-system-ui",
       [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Drively to use Face ID to unlock your encrypted logbook."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
@@ -35,7 +41,8 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

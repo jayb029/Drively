@@ -6,17 +6,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { DrivingProvider } from './src/contexts/DrivingContext';
+import { DataSecurityProvider, useDataSecurity } from './src/contexts/DataSecurityContext';
 import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
 import { ThemeProvider, preloadThemePreference, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import DataSecurityGate from './src/screens/DataSecurityGate';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
 import { configureDriveNotifications } from './src/services/driveDetection';
 import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/services/drivePip';
 import { downloadOtaUpdateInBackground } from './src/services/otaUpdater';
-import { preloadData } from './src/utils/storage';
 
-// Preload data and theme into memory as early as possible
-preloadData().catch(() => undefined);
+// Theme can be preloaded before rendering. App data waits for the security gate.
 preloadThemePreference().catch(() => undefined);
 
 function AppContent() {
@@ -127,11 +127,19 @@ function AppContent() {
   );
 }
 
+function SecuredAppContent() {
+  const { metadata, unlocked } = useDataSecurity();
+  if (!metadata || !unlocked) return <DataSecurityGate />;
+  return <AppContent />;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <AppContent />
+        <DataSecurityProvider>
+          <SecuredAppContent />
+        </DataSecurityProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

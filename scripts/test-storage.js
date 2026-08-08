@@ -9,6 +9,7 @@ const LEGACY_MAIN = `${DOCUMENT_DIRECTORY}drively/data.json`;
 const LEGACY_BACKUP = `${DOCUMENT_DIRECTORY}drively/backup.json`;
 const LOCAL_MAIN = `${LOCAL_DIRECTORY}data.json`;
 const LOCAL_BACKUP = `${LOCAL_DIRECTORY}backup.json`;
+const RECOVERY_FILE = `${LOCAL_DIRECTORY}encryption-recovery.json`;
 
 function makeData(driveIds) {
   return {
@@ -22,7 +23,7 @@ function makeData(driveIds) {
   };
 }
 
-function createStorageHarness(initialFiles = {}) {
+function createStorageHarness(initialFiles = {}, encryptionEnabled = false) {
   const files = new Map(Object.entries(initialFiles));
   const writes = [];
   const reads = [];
@@ -68,6 +69,20 @@ function createStorageHarness(initialFiles = {}) {
     if (request === '@react-native-async-storage/async-storage') return asyncStorage;
     if (request === 'react-native') return { Platform: { OS: 'android' } };
     if (request === './appInfo') return { getAppVersion: () => '2.2.1' };
+    if (request === './dataEncryption') {
+      return {
+        createEncryptionRecoveryMetadata: (metadata) => metadata.enabled ? '{"recovery":true}' : null,
+        decryptDataString: (value) => value,
+        encryptDataString: (value) => value,
+        ENCRYPTION_RECOVERY_FILE_NAME: 'encryption-recovery.json',
+        getEncryptionMetadata: async () => ({
+          enabled: encryptionEnabled,
+          salt: 'salt',
+          wrappedKey: { nonce: 'nonce', ciphertext: 'ciphertext' },
+          kdf: { name: 'PBKDF2-SHA256', iterations: 100000 },
+        }),
+      };
+    }
     if (request === './units') return { getDistanceUnitLabel: () => 'km', getSpeedUnitLabel: () => 'km/h' };
     if (request === './nightDriving') {
       return {
@@ -125,6 +140,14 @@ async function run() {
   const recovered = await backupRecovery.storage.loadData({ force: true });
   assert.deepEqual(recovered.drives.map(({ id }) => id), ['recovered']);
   assert(backupRecovery.files.has(LOCAL_MAIN), 'valid backup must restore a missing main file');
+
+  const encryptedHarness = createStorageHarness({}, true);
+  await encryptedHarness.storage.saveData(makeData(['encrypted']), { allowEmpty: true });
+  assert.equal(encryptedHarness.files.get(RECOVERY_FILE), '{"recovery":true}', 'encrypted storage must write recovery metadata');
+
+  const unencryptedHarness = createStorageHarness({ [RECOVERY_FILE]: '{"recovery":true}' });
+  await unencryptedHarness.storage.setCloudBackupEnabled(makeData(['plain']), false);
+  assert(!unencryptedHarness.files.has(RECOVERY_FILE), 'unencrypted storage must remove stale recovery metadata');
 
   console.log('Storage migration and recovery tests passed.');
 }

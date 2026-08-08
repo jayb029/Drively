@@ -18,14 +18,18 @@ import { useTheme } from '../contexts/ThemeContext';
 import { exportDataAsJSON, exportDrivesAsCSV } from '../utils/storage';
 import { generatePDFReport } from '../utils/pdf';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import ReauthenticationModal from '../components/ReauthenticationModal';
+import { useDataSecurity } from '../contexts/DataSecurityContext';
 
 export default function ExportScreen({ navigation }) {
+  const security = useDataSecurity();
   const { drives, supervisorProfiles, user, streaks, settings, updateSettings } = useDriving();
   const { theme } = useTheme();
   const [exporting, setExporting] = useState(false);
   const [isOfficialPDF, setIsOfficialPDF] = useState(false);
   const [leaveSupervisorSignatureBlank, setLeaveSupervisorSignatureBlank] = useState(false);
   const [exportMode, setExportMode] = useState('share');
+  const [showBackupUnlock, setShowBackupUnlock] = useState(false);
 
   // Create styles using current theme
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -218,7 +222,7 @@ export default function ExportScreen({ navigation }) {
     }
   };
 
-  const handleExportJSON = () => {
+  const confirmJSONExport = () => {
     Alert.alert(
       'Export complete backup?',
       'This JSON file contains your full Drively logbook, including driver, supervisor, drive, and location-derived records. Only save or share it with a destination you trust.',
@@ -227,6 +231,14 @@ export default function ExportScreen({ navigation }) {
         { text: 'Continue', onPress: exportJSONBackup },
       ]
     );
+  };
+
+  const handleExportJSON = () => {
+    if (security.metadata?.enabled) {
+      setShowBackupUnlock(true);
+      return;
+    }
+    confirmJSONExport();
   };
 
   const handleExportCSV = async () => {
@@ -418,6 +430,14 @@ export default function ExportScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <ReauthenticationModal
+        onCancel={() => setShowBackupUnlock(false)}
+        onSuccess={() => {
+          setShowBackupUnlock(false);
+          confirmJSONExport();
+        }}
+        visible={showBackupUnlock}
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>

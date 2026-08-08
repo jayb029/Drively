@@ -73,6 +73,13 @@ jest.mock('../src/navigation/AppNavigator', () => {
     default: () => ReactModule.createElement(NativeText, null, 'Navigator mounted'),
   };
 });
+jest.mock('../src/contexts/DataSecurityContext', () => ({
+  DataSecurityProvider: ({ children }) => children,
+  useDataSecurity: () => ({
+    metadata: { configured: true, enabled: false, biometricEnabled: false },
+    unlocked: true,
+  }),
+}));
 jest.mock('react-native-safe-area-context', () => {
   const ReactModule = require('react');
   const insets = { bottom: 0, left: 0, right: 0, top: 0 };
@@ -80,6 +87,7 @@ jest.mock('react-native-safe-area-context', () => {
     initialWindowMetrics: null,
     SafeAreaInsetsContext: ReactModule.createContext(insets),
     SafeAreaProvider: ({ children }) => children,
+    SafeAreaView: ({ children }) => children,
     useSafeAreaInsets: () => insets,
   };
 });
