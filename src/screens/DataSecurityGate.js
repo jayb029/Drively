@@ -124,6 +124,19 @@ export default function DataSecurityGate() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+      {isSetup && (
+        <View style={styles.topActionRow}>
+          <TouchableOpacity
+            accessibilityHint="Continue using Drively without encrypting your data"
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={skip}
+            style={[styles.skipButton, busy && styles.disabled]}
+          >
+            <Text style={[styles.skipText, { color: theme.colors.primary }]}>Skip for now</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -249,11 +262,6 @@ export default function DataSecurityGate() {
               </TouchableOpacity>
             )}
 
-            {isSetup && (
-              <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={skip} style={styles.skipButton}>
-                <Text style={[styles.skipText, { color: theme.colors.text.secondary }]}>Continue without encryption</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -296,7 +304,8 @@ const styles = StyleSheet.create({
   primaryButtonText: { fontSize: 15, fontWeight: '700' },
   secondaryButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 10, minHeight: 48, paddingHorizontal: 16 },
   secondaryButtonText: { fontSize: 15, fontWeight: '650' },
-  skipButton: { alignItems: 'center', marginTop: 6, paddingVertical: 14 },
-  skipText: { fontSize: 14, textDecorationLine: 'underline' },
+  topActionRow: { alignItems: 'flex-end', minHeight: 48, paddingHorizontal: 16 },
+  skipButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 8 },
+  skipText: { fontSize: 14, fontWeight: '650' },
   disabled: { opacity: 0.55 },
 });
