@@ -92,8 +92,8 @@ android {
         applicationId 'com.jaysapps.drively'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode drivelyVersionCode ? drivelyVersionCode.toInteger() : 15
-        versionName "2.2.1"
+        versionCode drivelyVersionCode ? drivelyVersionCode.toInteger() : 16
+        versionName "2.3.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
