@@ -10,6 +10,7 @@ import {
   migrateTransientDataToEncryption,
   migrateTransientDataFromEncryption,
   requestEncryptionSetup,
+  setAutomaticPasscodeEntryEnabled,
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
@@ -75,7 +76,10 @@ export function DataSecurityProvider({ children }) {
     },
     unlockPasscode: async (passcode) => {
       const success = await unlockWithPasscode(passcode);
-      if (success) setUnlocked(true);
+      if (success) {
+        setMetadata((current) => ({ ...current, passcodeLength: passcode.length }));
+        setUnlocked(true);
+      }
       return success;
     },
     unlockBiometric: async () => {
@@ -88,6 +92,10 @@ export function DataSecurityProvider({ children }) {
     ),
     setBiometricsEnabled: async (enabled) => {
       const next = await setBiometricUnlockEnabled(enabled);
+      setMetadata(next);
+    },
+    setAutomaticPasscodeEntry: async (enabled) => {
+      const next = await setAutomaticPasscodeEntryEnabled(enabled);
       setMetadata(next);
     },
     changePasscode: async (passcode) => {
@@ -120,5 +128,6 @@ export function useDataSecurity() {
     disableEncryption: async () => undefined,
     requireReauthentication: async () => true,
     setBiometricsEnabled: async () => undefined,
+    setAutomaticPasscodeEntry: async () => undefined,
   };
 }

@@ -37,6 +37,7 @@ import {
   isEncryptedDataString,
   lockEncryption,
   migrateTransientDataFromEncryption,
+  setAutomaticPasscodeEntryEnabled,
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
@@ -70,10 +71,20 @@ describe('data encryption', () => {
   });
 
   it('stores and uses the mobile-friendly passcode work factor', async () => {
-    await configureEncryption('4826', false);
-    expect((await getEncryptionMetadata()).kdf.iterations).toBe(100000);
+    const configured = await configureEncryption('4826', false);
+    expect(configured.kdf.iterations).toBe(100000);
+    expect(configured.automaticPasscodeEntry).toBe(true);
+    expect(configured.passcodeLength).toBe(4);
     lockEncryption();
     await expect(unlockWithPasscode('4826')).resolves.toBe(true);
+  });
+
+  it('persists the automatic passcode entry preference', async () => {
+    await configureEncryption('4826', false);
+    await setAutomaticPasscodeEntryEnabled(false);
+    expect((await getEncryptionMetadata()).automaticPasscodeEntry).toBe(false);
+    await setAutomaticPasscodeEntryEnabled(true);
+    expect((await getEncryptionMetadata()).automaticPasscodeEntry).toBe(true);
   });
 
   it('changes the passcode without changing the encrypted data key', async () => {
@@ -121,9 +132,17 @@ describe('data encryption', () => {
     mockFiles.set('file:///documents/drively/cloud/encryption-recovery.json', recovery);
 
     const restored = await getEncryptionMetadata();
-    expect(restored).toEqual({ ...configured, biometricEnabled: false });
+    expect(restored).toEqual({
+      configured: true,
+      enabled: true,
+      biometricEnabled: false,
+      salt: configured.salt,
+      wrappedKey: configured.wrappedKey,
+      kdf: configured.kdf,
+    });
     await expect(unlockWithBiometrics()).resolves.toBe(false);
     await expect(unlockWithPasscode('0000')).resolves.toBe(false);
     await expect(unlockWithPasscode('4826')).resolves.toBe(true);
+    expect((await getEncryptionMetadata()).passcodeLength).toBe(4);
   });
 });

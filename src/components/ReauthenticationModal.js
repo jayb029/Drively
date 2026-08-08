@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
+import PasscodeKeypad from './PasscodeKeypad';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 export default function ReauthenticationModal({
   body = 'Confirm your identity before Drively creates the full plaintext JSON backup.',
+  children,
   confirmLabel = 'Unlock and continue',
   title = 'Unlock to export backup',
   visible,
@@ -17,6 +19,10 @@ export default function ReauthenticationModal({
   const [passcode, setPasscode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const automaticEntry = security.metadata?.automaticPasscodeEntry !== false;
+  const passcodeLength = Number.isInteger(security.metadata?.passcodeLength)
+    ? security.metadata.passcodeLength
+    : null;
 
   const finish = () => {
     setPasscode('');
@@ -24,47 +30,74 @@ export default function ReauthenticationModal({
     onSuccess();
   };
 
-  const authenticate = async (biometric = false) => {
+  const authenticate = async (candidate = passcode, biometric = false) => {
     setBusy(true);
     setError('');
-    const success = await security.requireReauthentication(passcode, biometric);
+    const success = await security.requireReauthentication(candidate, biometric);
     setBusy(false);
     if (success) finish();
-    else setError(biometric ? 'Biometric authentication was not completed.' : 'That passcode is incorrect.');
+    else {
+      if (automaticEntry && !biometric) setPasscode('');
+      setError(biometric ? 'Biometric authentication was not completed.' : 'That passcode is incorrect.');
+    }
+  };
+
+  const cancel = () => {
+    setPasscode('');
+    setError('');
+    onCancel();
+  };
+
+  const updatePasscode = (next) => {
+    setPasscode(next);
+    if (error) setError('');
+    if (passcodeLength && next.length === passcodeLength) authenticate(next);
   };
 
   return (
-    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
+    <Modal animationType="fade" onRequestClose={cancel} transparent visible={visible}>
       <View style={styles.backdrop}>
-        <View style={[styles.dialog, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
+        <ScrollView
+          contentContainerStyle={styles.dialogContent}
+          keyboardShouldPersistTaps="handled"
+          style={[styles.dialog, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}
+        >
           <Text style={[styles.title, { color: theme.colors.text.primary }]}>{title}</Text>
           <Text style={[styles.body, { color: theme.colors.text.secondary }]}>{body}</Text>
-          <TextInput
+          {children || (automaticEntry ? (
+            <PasscodeKeypad
+              busy={busy}
+              compact
+              expectedLength={passcodeLength}
+              onChange={updatePasscode}
+              value={passcode}
+            />
+          ) : <TextInput
             autoFocus
             editable={!busy}
             keyboardType="number-pad"
             onChangeText={(value) => setPasscode(value.replace(/\D/g, ''))}
-            onSubmitEditing={() => authenticate(false)}
+            onSubmitEditing={() => authenticate()}
             placeholder="Passcode"
             placeholderTextColor={theme.colors.text.light}
             secureTextEntry
             style={[styles.input, { borderColor: theme.colors.border.light, color: theme.colors.text.primary }]}
             value={passcode}
-          />
-          {!!error && <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
-          <TouchableOpacity disabled={busy || passcode.length < 4} onPress={() => authenticate(false)} style={[styles.primary, { backgroundColor: theme.colors.primary }]}>
+          />)}
+          {!children && !!error && <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
+          {!children && (!automaticEntry || !passcodeLength) && <TouchableOpacity disabled={busy || passcode.length < 4} onPress={() => authenticate()} style={[styles.primary, { backgroundColor: theme.colors.primary }]}>
             <Text style={styles.primaryText}>{confirmLabel}</Text>
-          </TouchableOpacity>
-          {security.metadata?.biometricEnabled && (
-            <TouchableOpacity disabled={busy} onPress={() => authenticate(true)} style={[styles.secondary, { borderColor: theme.colors.border.light }]}>
+          </TouchableOpacity>}
+          {!children && security.metadata?.biometricEnabled && (
+            <TouchableOpacity disabled={busy} onPress={() => authenticate(passcode, true)} style={[styles.secondary, { borderColor: theme.colors.border.light }]}>
               <Icon name="fingerprint" size={20} color={theme.colors.primary} />
               <Text style={[styles.secondaryText, { color: theme.colors.text.primary }]}>Use biometrics</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity disabled={busy} onPress={onCancel} style={styles.cancel}>
+          <TouchableOpacity disabled={busy} onPress={cancel} style={styles.cancel}>
             <Text style={[styles.cancelText, { color: theme.colors.text.secondary }]}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -72,7 +105,8 @@ export default function ReauthenticationModal({
 
 const styles = StyleSheet.create({
   backdrop: { alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.55)', flex: 1, justifyContent: 'center', padding: 24 },
-  dialog: { borderRadius: 10, borderWidth: 1, maxWidth: 420, padding: 22, width: '100%' },
+  dialog: { borderRadius: 10, borderWidth: 1, flexGrow: 0, flexShrink: 1, maxHeight: '94%', maxWidth: 420, width: '100%' },
+  dialogContent: { padding: 22 },
   title: { fontSize: 20, fontWeight: '700' },
   body: { fontSize: 14, lineHeight: 20, marginBottom: 18, marginTop: 7 },
   input: { borderRadius: 8, borderWidth: 1, fontSize: 17, letterSpacing: 3, paddingHorizontal: 13, paddingVertical: 12 },

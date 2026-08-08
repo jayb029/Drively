@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
+import PasscodeKeypad from '../components/PasscodeKeypad';
 
 export default function DataSecurityGate() {
   const security = useDataSecurity();
@@ -24,9 +25,14 @@ export default function DataSecurityGate() {
   const [useBiometrics, setUseBiometrics] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [setupStage, setSetupStage] = useState('create');
   const automaticBiometricAttempted = useRef(false);
   const confirmationRef = useRef(null);
   const isSetup = security.metadata?.configured === false;
+  const automaticEntry = isSetup || security.metadata?.automaticPasscodeEntry !== false;
+  const savedPasscodeLength = Number.isInteger(security.metadata?.passcodeLength)
+    ? security.metadata.passcodeLength
+    : null;
 
   useEffect(() => {
     if (isSetup || !security.metadata?.biometricEnabled || automaticBiometricAttempted.current) return;
@@ -43,28 +49,50 @@ export default function DataSecurityGate() {
     if (error) setError('');
   };
 
-  const submit = async () => {
+  const submit = async (candidate = passcode, candidateConfirmation = confirmation) => {
     setError('');
-    if (!/^\d{4,}$/.test(passcode)) {
+    if (!/^\d{4,}$/.test(candidate)) {
       setError('Enter a passcode with at least 4 digits.');
       return;
     }
-    if (isSetup && passcode !== confirmation) {
+    if (isSetup && candidate !== candidateConfirmation) {
       setError('The passcodes do not match.');
+      if (automaticEntry) setConfirmation('');
       return;
     }
     setBusy(true);
     try {
       if (isSetup) {
-        await security.setupEncryption(passcode, useBiometrics);
-      } else if (!(await security.unlockPasscode(passcode))) {
+        await security.setupEncryption(candidate, useBiometrics);
+      } else if (!(await security.unlockPasscode(candidate))) {
         setError('That passcode is incorrect.');
+        if (automaticEntry) setPasscode('');
       }
     } catch (submissionError) {
       setError(submissionError.message || 'Drively could not update data protection.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const updateKeypadValue = (next) => {
+    if (error) setError('');
+    if (isSetup && setupStage === 'confirm') {
+      setConfirmation(next);
+      if (next.length === passcode.length) submit(passcode, next);
+      return;
+    }
+    setPasscode(next);
+    if (!isSetup && savedPasscodeLength && next.length === savedPasscodeLength) submit(next);
+  };
+
+  const continueSetup = () => {
+    if (!/^\d{4,}$/.test(passcode)) {
+      setError('Enter a passcode with at least 4 digits.');
+      return;
+    }
+    setError('');
+    setSetupStage('confirm');
   };
 
   const unlockBiometric = async () => {
@@ -126,25 +154,32 @@ export default function DataSecurityGate() {
 
             <View style={styles.form}>
               <Text style={[styles.label, { color: theme.colors.text.primary }]}>
-                {isSetup ? 'Create passcode' : 'Passcode'}
+                {isSetup && setupStage === 'confirm' ? 'Confirm passcode' : isSetup ? 'Create passcode' : 'Passcode'}
               </Text>
-              <TextInput
+              {automaticEntry ? (
+                <PasscodeKeypad
+                  busy={busy}
+                  expectedLength={isSetup && setupStage === 'confirm' ? passcode.length : savedPasscodeLength}
+                  onChange={updateKeypadValue}
+                  value={isSetup && setupStage === 'confirm' ? confirmation : passcode}
+                />
+              ) : <TextInput
                 accessibilityLabel={isSetup ? 'Create passcode' : 'Passcode'}
                 autoFocus={!security.metadata?.biometricEnabled}
                 editable={!busy}
                 keyboardType="number-pad"
                 maxLength={16}
                 onChangeText={(value) => updatePasscode(value, setPasscode)}
-                onSubmitEditing={isSetup ? () => confirmationRef.current?.focus() : submit}
+                onSubmitEditing={isSetup ? () => confirmationRef.current?.focus() : () => submit()}
                 placeholder="4 digits or more"
                 placeholderTextColor={theme.colors.text.light}
                 returnKeyType={isSetup ? 'next' : 'done'}
                 secureTextEntry
                 style={[styles.input, inputColors]}
                 value={passcode}
-              />
+              />}
 
-              {isSetup && (
+              {isSetup && !automaticEntry && (
                 <>
                   <Text style={[styles.label, styles.confirmLabel, { color: theme.colors.text.primary }]}>Confirm passcode</Text>
                   <TextInput
@@ -154,7 +189,7 @@ export default function DataSecurityGate() {
                     keyboardType="number-pad"
                     maxLength={16}
                     onChangeText={(value) => updatePasscode(value, setConfirmation)}
-                    onSubmitEditing={submit}
+                    onSubmitEditing={() => submit()}
                     returnKeyType="done"
                     secureTextEntry
                     style={[styles.input, inputColors]}
@@ -171,7 +206,7 @@ export default function DataSecurityGate() {
               )}
             </View>
 
-            {isSetup && security.biometricsAvailable && (
+            {isSetup && setupStage === 'create' && security.biometricsAvailable && (
               <View style={[styles.biometricRow, { borderColor: theme.colors.border.light }]}>
                 <Icon name="fingerprint" size={24} color={theme.colors.primary} />
                 <View style={styles.biometricCopy}>
@@ -190,17 +225,17 @@ export default function DataSecurityGate() {
               </View>
             )}
 
-            <TouchableOpacity
+            {((isSetup && setupStage === 'create') || !automaticEntry || (!isSetup && !savedPasscodeLength)) && <TouchableOpacity
               accessibilityRole="button"
               disabled={busy}
-              onPress={submit}
+              onPress={isSetup && automaticEntry ? continueSetup : () => submit()}
               style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}
             >
               <Icon name={isSetup ? 'lock-check-outline' : 'lock-open-variant-outline'} size={20} color={theme.colors.text.inverse} />
               <Text style={[styles.primaryButtonText, { color: theme.colors.text.inverse }]}>
-                {busy ? 'Please wait…' : isSetup ? 'Encrypt and continue' : 'Unlock Drively'}
+                {busy ? 'Please wait…' : isSetup && automaticEntry ? 'Continue' : isSetup ? 'Encrypt and continue' : 'Unlock Drively'}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
             {!isSetup && security.metadata.biometricEnabled && (
               <TouchableOpacity

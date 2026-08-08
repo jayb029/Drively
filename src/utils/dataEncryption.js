@@ -158,6 +158,8 @@ export async function configureEncryption(passcode, useBiometrics) {
     configured: true,
     enabled: true,
     biometricEnabled,
+    automaticPasscodeEntry: true,
+    passcodeLength: passcode.length,
     salt: bytesToBase64(salt),
     wrappedKey,
     kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
@@ -184,6 +186,7 @@ export async function changeEncryptionPasscode(passcode) {
   const passcodeKey = await derivePasscodeKey(passcode, salt);
   const next = {
     ...metadata,
+    passcodeLength: passcode.length,
     salt: bytesToBase64(salt),
     wrappedKey: encryptBytes(sessionKey, passcodeKey),
     kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
@@ -211,6 +214,13 @@ export async function unlockWithPasscode(passcode) {
     if (key.length !== 32) return false;
     sessionKey = key;
 
+    const unlockedMetadata = metadata.passcodeLength === passcode.length
+      ? metadata
+      : { ...metadata, passcodeLength: passcode.length };
+    if (metadata.passcodeLength !== passcode.length) {
+      await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(unlockedMetadata));
+    }
+
     if (iterations !== KDF_ITERATIONS) {
       // Do not hold the unlock screen open for a second derivation. Upgrade the
       // wrapper in the background so following unlocks use the faster factor.
@@ -219,7 +229,7 @@ export async function unlockWithPasscode(passcode) {
           const salt = Crypto.getRandomBytes(16);
           const nextPasscodeKey = await derivePasscodeKey(passcode, salt);
           await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify({
-            ...metadata,
+            ...unlockedMetadata,
             salt: bytesToBase64(salt),
             wrappedKey: encryptBytes(key, nextPasscodeKey),
             kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
@@ -314,6 +324,13 @@ export async function setBiometricUnlockEnabled(enabled) {
     await SecureStore.deleteItemAsync(BIOMETRIC_KEY_NAME);
   }
   const next = { ...metadata, biometricEnabled: enabled === true };
+  await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
+  return next;
+}
+
+export async function setAutomaticPasscodeEntryEnabled(enabled) {
+  const metadata = await getEncryptionMetadata();
+  const next = { ...metadata, automaticPasscodeEntry: enabled === true };
   await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
   return next;
 }

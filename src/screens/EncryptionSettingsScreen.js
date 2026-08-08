@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import PasscodeKeypad from '../components/PasscodeKeypad';
 import ReauthenticationModal from '../components/ReauthenticationModal';
 import {
   SettingsActionRow,
@@ -18,31 +19,60 @@ export default function EncryptionSettingsScreen({ navigation }) {
   const [editingPasscode, setEditingPasscode] = useState(false);
   const [passcode, setPasscode] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [passcodeStage, setPasscodeStage] = useState('create');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const savePasscode = async () => {
-    if (!/^\d{4,}$/.test(passcode)) {
+  const automaticEntry = security.metadata?.automaticPasscodeEntry !== false;
+
+  const resetPasscodeEditor = () => {
+    setEditingPasscode(false);
+    setPasscode('');
+    setConfirmation('');
+    setPasscodeStage('create');
+    setError('');
+  };
+
+  const savePasscode = async (candidate = passcode, candidateConfirmation = confirmation) => {
+    if (!/^\d{4,}$/.test(candidate)) {
       setError('Enter a passcode with at least 4 digits.');
       return;
     }
-    if (passcode !== confirmation) {
+    if (candidate !== candidateConfirmation) {
       setError('The passcodes do not match.');
+      if (automaticEntry) setConfirmation('');
       return;
     }
 
     setBusy(true);
     setError('');
     try {
-      await security.changePasscode(passcode);
-      setPasscode('');
-      setConfirmation('');
-      setEditingPasscode(false);
+      await security.changePasscode(candidate);
+      resetPasscodeEditor();
       Alert.alert('Passcode changed', 'Use the new passcode the next time Drively is locked.');
     } catch {
       setError('Drively could not change the encryption passcode.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const continuePasscodeChange = () => {
+    if (!/^\d{4,}$/.test(passcode)) {
+      setError('Enter a passcode with at least 4 digits.');
+      return;
+    }
+    setError('');
+    setPasscodeStage('confirm');
+  };
+
+  const updateKeypadValue = (next) => {
+    if (error) setError('');
+    if (passcodeStage === 'confirm') {
+      setConfirmation(next);
+      if (next.length === passcode.length) savePasscode(passcode, next);
+    } else {
+      setPasscode(next);
     }
   };
 
@@ -59,6 +89,7 @@ export default function EncryptionSettingsScreen({ navigation }) {
     const action = reauthAction;
     setReauthAction(null);
     if (action === 'change') {
+      setPasscodeStage('create');
       setEditingPasscode(true);
       return;
     }
@@ -101,42 +132,24 @@ export default function EncryptionSettingsScreen({ navigation }) {
             value={!!security.metadata?.biometricEnabled}
           />
         )}
+        <SettingsSwitchRow
+          disabled={busy}
+          label="Automatic passcode entry"
+          onValueChange={async (enabled) => {
+            setBusy(true);
+            try {
+              await security.setAutomaticPasscodeEntry(enabled);
+            } catch {
+              Alert.alert('Setting not changed', 'Drively could not update automatic passcode entry.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+          subtitle="Show an integrated number pad and passcode dots, then unlock when the last digit is entered."
+          value={security.metadata?.automaticPasscodeEntry !== false}
+        />
         <SettingsActionRow label="Change passcode" onPress={() => setReauthAction('change')} subtitle="Choose a new passcode without re-encrypting your logbook." />
       </SettingsSection>
-
-      {editingPasscode && (
-        <SettingsSection title="New passcode">
-          <View style={styles.form}>
-            <Text style={[styles.label, { color: theme.colors.text.primary }]}>New passcode</Text>
-            <TextInput
-              accessibilityLabel="New encryption passcode"
-              autoFocus
-              editable={!busy}
-              keyboardType="number-pad"
-              maxLength={16}
-              onChangeText={(value) => { setPasscode(value.replace(/\D/g, '')); setError(''); }}
-              secureTextEntry
-              style={[styles.input, { borderColor: theme.colors.border.medium, color: theme.colors.text.primary }]}
-              value={passcode}
-            />
-            <Text style={[styles.label, { color: theme.colors.text.primary }]}>Confirm new passcode</Text>
-            <TextInput
-              accessibilityLabel="Confirm new encryption passcode"
-              editable={!busy}
-              keyboardType="number-pad"
-              maxLength={16}
-              onChangeText={(value) => { setConfirmation(value.replace(/\D/g, '')); setError(''); }}
-              onSubmitEditing={savePasscode}
-              secureTextEntry
-              style={[styles.input, { borderColor: error ? theme.colors.error : theme.colors.border.medium, color: theme.colors.text.primary }]}
-              value={confirmation}
-            />
-            {!!error && <Text accessibilityLiveRegion="polite" style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
-            <SettingsButton disabled={busy} label="Save new passcode" onPress={savePasscode} />
-            <SettingsButton disabled={busy} label="Cancel" onPress={() => { setEditingPasscode(false); setPasscode(''); setConfirmation(''); setError(''); }} secondary />
-          </View>
-        </SettingsSection>
-      )}
 
       <SettingsSection title="Encryption">
         <SettingsActionRow
@@ -148,22 +161,62 @@ export default function EncryptionSettingsScreen({ navigation }) {
       </SettingsSection>
 
       <ReauthenticationModal
-        body={reauthAction === 'disable'
+        body={editingPasscode
+          ? (passcodeStage === 'confirm'
+            ? 'Enter the new passcode again to verify it.'
+            : 'Choose a passcode with at least 4 digits.')
+          : reauthAction === 'disable'
           ? 'Confirm your identity before Drively rewrites the full logbook without app-level encryption.'
           : 'Confirm your identity before choosing a new encryption passcode.'}
         confirmLabel="Confirm and continue"
-        onCancel={() => setReauthAction(null)}
+        onCancel={editingPasscode ? resetPasscodeEditor : () => setReauthAction(null)}
         onSuccess={finishReauthentication}
-        title={reauthAction === 'disable' ? 'Confirm encryption change' : 'Confirm passcode change'}
-        visible={!!reauthAction}
-      />
+        title={editingPasscode
+          ? (passcodeStage === 'confirm' ? 'Confirm new passcode' : 'Enter new passcode')
+          : reauthAction === 'disable' ? 'Confirm encryption change' : 'Confirm passcode change'}
+        visible={!!reauthAction || editingPasscode}
+      >
+        {editingPasscode ? (
+          <View style={styles.form}>
+            {automaticEntry ? (
+              <PasscodeKeypad
+                busy={busy}
+                compact
+                expectedLength={passcodeStage === 'confirm' ? passcode.length : null}
+                onChange={updateKeypadValue}
+                value={passcodeStage === 'confirm' ? confirmation : passcode}
+              />
+            ) : (
+              <TextInput
+                accessibilityLabel={passcodeStage === 'confirm' ? 'Confirm new encryption passcode' : 'New encryption passcode'}
+                autoFocus
+                editable={!busy}
+                keyboardType="number-pad"
+                maxLength={16}
+                onChangeText={(value) => {
+                  const next = value.replace(/\D/g, '');
+                  if (passcodeStage === 'confirm') setConfirmation(next);
+                  else setPasscode(next);
+                  setError('');
+                }}
+                onSubmitEditing={passcodeStage === 'confirm' ? () => savePasscode() : continuePasscodeChange}
+                secureTextEntry
+                style={[styles.input, { borderColor: error ? theme.colors.error : theme.colors.border.medium, color: theme.colors.text.primary }]}
+                value={passcodeStage === 'confirm' ? confirmation : passcode}
+              />
+            )}
+            {!!error && <Text accessibilityLiveRegion="polite" style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
+            {passcodeStage === 'create' && <SettingsButton disabled={busy} label="Continue" onPress={continuePasscodeChange} />}
+            {!automaticEntry && passcodeStage === 'confirm' && <SettingsButton disabled={busy} label="Save new passcode" onPress={() => savePasscode()} />}
+          </View>
+        ) : null}
+      </ReauthenticationModal>
     </SettingsPage>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 10, padding: 14 },
-  label: { fontSize: 14, fontWeight: '600' },
+  form: { gap: 10 },
   input: { borderRadius: 7, borderWidth: 1, fontSize: 17, letterSpacing: 3, paddingHorizontal: 13, paddingVertical: 12 },
   error: { fontSize: 13, lineHeight: 18 },
 });
