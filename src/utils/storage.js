@@ -18,6 +18,7 @@ const LEGACY_MAIN_DATA_FILE = `${DATA_ROOT_DIR}data.json`;
 const LEGACY_BACKUP_DATA_FILE = `${DATA_ROOT_DIR}backup.json`;
 const CLOUD_BACKUP_PREFERENCE_KEY = 'drively.cloudBackupEnabled.v1';
 const WEB_DATA_KEY = 'drively.data.v1';
+const LOCAL_STORAGE_LAYOUT_VERSION = 2;
 let saveQueue = Promise.resolve();
 let activeCloudBackup = null;
 let memoryDataCache = null;
@@ -190,25 +191,9 @@ function hasMeaningfulData(data) {
   );
 }
 
-/**
- * Rank datasets so a thin onboarded shell loses to a real export with drives.
- */
-function dataRichnessScore(data) {
-  if (!data) return -1;
-  return (
-    (Array.isArray(data.drives) ? data.drives.length : 0) * 1000 +
-    (Array.isArray(data.supervisorProfiles) ? data.supervisorProfiles.length : 0) * 50 +
-    (Array.isArray(data.detectedEvents) ? data.detectedEvents.length : 0) * 10 +
-    (data.user?.onboardingComplete ? 5 : 0) +
-    (!isDefaultUserValue('driverName', data?.user?.driverName) ? 1 : 0) +
-    (!isDefaultUserValue('permitNumber', data?.user?.permitNumber) ? 1 : 0)
-  );
-}
-
 function pickRestoredData(primaryData, backupData) {
   if (!primaryData) return backupData || null;
-  if (!backupData) return primaryData;
-  return dataRichnessScore(backupData) > dataRichnessScore(primaryData) ? backupData : primaryData;
+  return primaryData;
 }
 
 function isValidDataShape(data) {
@@ -225,57 +210,6 @@ async function readJsonDataFile(uri) {
     console.warn('Failed to read data file:', uri, error);
     return null;
   }
-}
-
-async function collectJsonFilesFromDirectory(directory, namePredicate) {
-  try {
-    if (!directory || !(await fileExists(directory))) return [];
-    const names = await FileSystem.readDirectoryAsync(directory);
-    return names
-      .filter((name) => name.endsWith('.json') && (!namePredicate || namePredicate(name)))
-      .map((name) => `${directory}${name}`);
-  } catch (error) {
-    console.warn('Failed to list directory for recovery:', directory, error);
-    return [];
-  }
-}
-
-/**
- * Scan main/backup across local, cloud, legacy, and export cache locations.
- * Prefers the richest valid dataset (most drives/profiles), not just "any onboarded shell".
- */
-async function findBestAvailableData(preferredCloudBackup) {
-  const preferred = getDataPaths(preferredCloudBackup);
-  const alternate = getDataPaths(!preferredCloudBackup);
-  const candidateUris = [
-    preferred.mainFile,
-    preferred.backupFile,
-    alternate.mainFile,
-    alternate.backupFile,
-    LEGACY_MAIN_DATA_FILE,
-    LEGACY_BACKUP_DATA_FILE,
-  ];
-
-  // Export/share flow writes JSON backups into the cache directory.
-  if (FileSystem.cacheDirectory) {
-    const cacheBackups = await collectJsonFilesFromDirectory(
-      FileSystem.cacheDirectory,
-      (name) => name.startsWith('drively_backup_') || name.startsWith('drively_export_')
-    );
-    const pickerBackups = await collectJsonFilesFromDirectory(
-      `${FileSystem.cacheDirectory}DocumentPicker/`,
-      () => true
-    );
-    candidateUris.push(...cacheBackups, ...pickerBackups);
-  }
-
-  let best = null;
-  for (const uri of candidateUris) {
-    const data = await readJsonDataFile(uri);
-    if (!data) continue;
-    best = pickRestoredData(best, data);
-  }
-  return best;
 }
 
 /**
@@ -298,18 +232,32 @@ async function deleteIfExists(uri) {
   }
 }
 
-async function copyIfPresent(from, to) {
-  if (!(await fileExists(from)) || await fileExists(to)) return;
-  await FileSystem.copyAsync({ from, to });
-}
-
 async function migrateLegacyStorageToLocal() {
   const localPaths = getDataPaths(false);
+  if (await fileExists(localPaths.mainFile)) return false;
+
+  const legacyMain = await readJsonDataFile(LEGACY_MAIN_DATA_FILE);
+  const legacyBackup = await readJsonDataFile(LEGACY_BACKUP_DATA_FILE);
+  const legacyData = pickRestoredData(legacyMain, legacyBackup);
+  if (!legacyData) return false;
+
+  const migratedData = migrateData({
+    ...legacyData,
+    storageMigration: {
+      ...(legacyData.storageMigration || {}),
+      localLayoutVersion: LOCAL_STORAGE_LAYOUT_VERSION,
+    },
+  });
+  const serializedData = JSON.stringify(migratedData);
+
   await ensureDirectoryExists(localPaths.directory);
-  await copyIfPresent(LEGACY_MAIN_DATA_FILE, localPaths.mainFile);
-  await copyIfPresent(LEGACY_BACKUP_DATA_FILE, localPaths.backupFile);
-  await deleteIfExists(LEGACY_MAIN_DATA_FILE);
-  await deleteIfExists(LEGACY_BACKUP_DATA_FILE);
+  await FileSystem.writeAsStringAsync(localPaths.mainFile, serializedData);
+  await FileSystem.writeAsStringAsync(localPaths.backupFile, serializedData);
+
+  // Keep the legacy main file as a durable migration record. The new main file
+  // existing above makes subsequent launches skip this migration.
+  await FileSystem.writeAsStringAsync(LEGACY_MAIN_DATA_FILE, serializedData);
+  return true;
 }
 
 async function getCloudBackupPreference() {
@@ -416,9 +364,7 @@ export async function loadData(options = {}) {
 
     const mainData = await readJsonDataFile(mainFile);
     const backupData = await readJsonDataFile(backupFile);
-    // Always scan all known locations so a thin onboarded shell cannot hide a richer export.
-    const bestAvailable = await findBestAvailableData(cloudBackupEnabled);
-    let restoredData = pickRestoredData(pickRestoredData(mainData, backupData), bestAvailable);
+    const restoredData = pickRestoredData(mainData, backupData);
 
     if (!restoredData) {
       // True first launch — no files anywhere. Seed defaults without treating this as recovery.
@@ -431,36 +377,18 @@ export async function loadData(options = {}) {
 
     result = migrateData(restoredData);
 
-    // Write back when we recovered a richer dataset than the active main file.
-    if (dataRichnessScore(result) > dataRichnessScore(mainData)) {
-      console.warn('Restored richer app data from backup/export storage location', {
-        mainScore: dataRichnessScore(mainData),
-        restoredScore: dataRichnessScore(result),
-        drives: result.drives?.length || 0,
-      });
+    // A backup is recovery-only: restore it when the active main file is
+    // missing or invalid, never merely because it contains more records.
+    if (!mainData && backupData) {
+      console.warn('Restored app data from backup because the main file was unavailable');
       memoryDataCache = result;
       await saveData(result);
       return memoryDataCache;
     }
   } catch (error) {
-    console.warn('Failed to load app data, trying full storage scan:', error);
-
-    try {
-      const cloudBackupEnabled = await getCloudBackupPreference();
-      const recovered = await findBestAvailableData(cloudBackupEnabled);
-      if (recovered) {
-        result = migrateData(recovered);
-        memoryDataCache = result;
-        if (hasMeaningfulData(result)) {
-          await saveData(result);
-        }
-        return memoryDataCache;
-      }
-    } catch (recoveryError) {
-      console.warn('Full storage scan also failed:', recoveryError);
-    }
-
-    // Last resort: in-memory defaults only. Do NOT write defaults over unknown disk state.
+    // Last resort: in-memory defaults only. Do NOT scan picker/export caches or
+    // write defaults over unknown disk state.
+    console.warn('Failed to load app data:', error);
     console.warn('Using in-memory defaults without wiping storage');
     result = migrateData(DEFAULT_DATA);
   }
@@ -518,34 +446,10 @@ async function persistData(data, options = {}) {
     // (e.g. crash fallback state or a fresh onboarding overwrite).
     if (!allowEmpty) {
       const existingMain = await readJsonDataFile(mainFile);
-      const existingBackup = await readJsonDataFile(backupFile);
-      const existing = pickRestoredData(existingMain, existingBackup);
+      const existing = existingMain || await readJsonDataFile(backupFile);
       if (existing) {
-        const existingDrives = existing.drives?.length || 0;
-        const nextDrives = normalizedData.drives?.length || 0;
-        const existingScore = dataRichnessScore(existing);
-        const nextScore = dataRichnessScore(normalizedData);
-
         if (!hasMeaningfulData(normalizedData) && hasMeaningfulData(existing)) {
           console.warn('Refusing to overwrite meaningful data with empty defaults');
-          return false;
-        }
-
-        // Block wiping multi-drive history in one save (full reset uses clearAllData).
-        if (existingDrives >= 2 && nextDrives === 0) {
-          console.warn('Refusing to wipe drive history with an empty drives list', {
-            existingDrives,
-            nextDrives,
-          });
-          return false;
-        }
-
-        // Block sudden collapse from a rich profile to a thin onboarded shell.
-        if (existingScore >= 1000 && nextScore < existingScore * 0.25) {
-          console.warn('Refusing to overwrite rich data with much thinner dataset', {
-            existingScore,
-            nextScore,
-          });
           return false;
         }
       }

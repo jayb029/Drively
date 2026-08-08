@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "test:apk-updater": "node scripts/test-apk-updater.js",
     "test:night-driving": "node scripts/test-night-driving.js",
+    "test:storage": "node scripts/test-storage.js",
     "postinstall": "patch-package",
     "version:set": "node scripts/update-version.js"
   },
