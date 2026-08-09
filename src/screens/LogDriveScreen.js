@@ -205,6 +205,12 @@ export default function LogDriveScreen({ navigation }) {
   const enteredSupervisorAge = calculateAge(supervisorDateOfBirth);
 
   useEffect(() => {
+    if (!selectedSupervisorId && supervisorProfiles.length === 1) {
+      setSelectedSupervisorId(supervisorProfiles[0].id);
+    }
+  }, [selectedSupervisorId, supervisorProfiles]);
+
+  useEffect(() => {
     if (settings.weatherEnabled ?? true) loadWeather();
     return () => {
       if (watchRef.current) {
@@ -1047,7 +1053,23 @@ export default function LogDriveScreen({ navigation }) {
             </View>
           )}
 
-          {!selectedSupervisorId && (
+          {supervisorProfiles.length === 0 ? (
+            <View style={styles.supervisorEmptyState}>
+              <Text style={styles.supervisorEmptyTitle}>Create a supervisor first</Text>
+              <Text style={styles.supervisorEmptyBody}>
+                Add their details once, then select them whenever you log a drive.
+              </Text>
+              <TouchableOpacity
+                accessibilityLabel="Create new supervisor"
+                accessibilityRole="button"
+                style={styles.supervisorCreateButton}
+                onPress={() => navigation.navigate('Supervisors', { startNew: true })}
+              >
+                <Icon name="account-plus-outline" size={20} color={theme.colors.text.inverse} />
+                <Text style={styles.supervisorCreateButtonText}>Create new supervisor</Text>
+              </TouchableOpacity>
+            </View>
+          ) : !selectedSupervisorId ? (
             <View style={styles.formGrid}>
               <Text style={styles.fieldLabel}>Full name</Text>
               <TextInput
@@ -1085,7 +1107,7 @@ export default function LogDriveScreen({ navigation }) {
                 <Text style={styles.profileMenuButtonText}>Save this person in Profiles</Text>
               </TouchableOpacity>
             </View>
-          )}
+          ) : null}
         </Section>
 
         <Section title="Drive Details" styles={styles}>
@@ -1554,6 +1576,36 @@ function createStyles(theme) {
     },
     formGrid: {
       gap: 10,
+    },
+    supervisorEmptyState: {
+      gap: 6,
+      paddingVertical: 4,
+    },
+    supervisorEmptyTitle: {
+      color: theme.colors.text.primary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    supervisorEmptyBody: {
+      color: theme.colors.text.secondary,
+      fontSize: 13,
+      lineHeight: 18,
+      marginBottom: 8,
+    },
+    supervisorCreateButton: {
+      minHeight: 50,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      paddingHorizontal: 16,
+      backgroundColor: theme.colors.primary,
+    },
+    supervisorCreateButtonText: {
+      color: theme.colors.text.inverse,
+      fontSize: 15,
+      fontWeight: '800',
     },
     input: {
       minHeight: 46,
