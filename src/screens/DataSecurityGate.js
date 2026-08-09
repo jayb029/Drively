@@ -16,6 +16,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
 import PasscodeKeypad from '../components/PasscodeKeypad';
+import { formatPasscodeLockoutTime } from '../utils/dataEncryption';
 
 export default function DataSecurityGate() {
   const security = useDataSecurity();
@@ -26,6 +27,7 @@ export default function DataSecurityGate() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [setupStage, setSetupStage] = useState('create');
+  const [currentTime, setCurrentTime] = useState(Date.now());
   const automaticBiometricAttempted = useRef(false);
   const confirmationRef = useRef(null);
   const isSetup = security.metadata?.configured === false;
@@ -33,16 +35,48 @@ export default function DataSecurityGate() {
   const savedPasscodeLength = Number.isInteger(security.metadata?.passcodeLength)
     ? security.metadata.passcodeLength
     : null;
+  const lockoutRemaining = Math.max(0, (security.passcodeLockoutUntil || 0) - currentTime);
+  const isLockedOut = !isSetup && lockoutRemaining > 0;
 
   useEffect(() => {
+    if (isLockedOut) {
+      automaticBiometricAttempted.current = true;
+      return;
+    }
     if (isSetup || !security.metadata?.biometricEnabled || automaticBiometricAttempted.current) return;
     automaticBiometricAttempted.current = true;
     security.unlockBiometric().then((success) => {
       if (!success) setError('Biometric unlock was not completed. Try again or enter your passcode.');
     });
-  }, [isSetup, security.metadata?.biometricEnabled]);
+  }, [isLockedOut, isSetup, security.metadata?.biometricEnabled]);
+
+  useEffect(() => {
+    if (!security.passcodeLockoutUntil) return undefined;
+    setCurrentTime(Date.now());
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [security.passcodeLockoutUntil]);
 
   if (!security.metadata) return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+
+  if (isLockedOut) {
+    return (
+      <SafeAreaView style={[styles.safeArea, styles.lockoutScreen, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.lockoutMark, { backgroundColor: theme.colors.error }]}>
+          <Icon name="lock-alert-outline" size={34} color={theme.colors.text.inverse} />
+        </View>
+        <Text style={[styles.lockoutTitle, { color: theme.colors.text.primary }]}>Drively is unavailable</Text>
+        <Text
+          accessibilityLabel={`${formatPasscodeLockoutTime(lockoutRemaining)} remaining`}
+          accessibilityLiveRegion="polite"
+          style={[styles.lockoutCountdown, { color: theme.colors.text.primary }]}
+        >
+          {formatPasscodeLockoutTime(lockoutRemaining)}
+        </Text>
+        <Text style={[styles.lockoutBody, { color: theme.colors.text.secondary }]}>Too many incorrect passcode attempts. You can try again when the timer reaches zero.</Text>
+      </SafeAreaView>
+    );
+  }
 
   const updatePasscode = (value, setter) => {
     setter(value.replace(/\D/g, ''));
@@ -50,6 +84,7 @@ export default function DataSecurityGate() {
   };
 
   const submit = async (candidate = passcode, candidateConfirmation = confirmation) => {
+    if (isLockedOut) return;
     setError('');
     if (!/^\d{4,}$/.test(candidate)) {
       setError('Enter a passcode with at least 4 digits.');
@@ -96,6 +131,7 @@ export default function DataSecurityGate() {
   };
 
   const unlockBiometric = async () => {
+    if (isLockedOut) return;
     setBusy(true);
     setError('');
     try {
@@ -121,6 +157,7 @@ export default function DataSecurityGate() {
     borderColor: error ? theme.colors.error : theme.colors.border.medium,
     color: theme.colors.text.primary,
   };
+  const displayedError = error;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
@@ -171,7 +208,7 @@ export default function DataSecurityGate() {
               </Text>
               {automaticEntry ? (
                 <PasscodeKeypad
-                  busy={busy}
+                  busy={busy || isLockedOut}
                   expectedLength={isSetup && setupStage === 'confirm' ? passcode.length : savedPasscodeLength}
                   onChange={updateKeypadValue}
                   value={isSetup && setupStage === 'confirm' ? confirmation : passcode}
@@ -179,7 +216,7 @@ export default function DataSecurityGate() {
               ) : <TextInput
                 accessibilityLabel={isSetup ? 'Create passcode' : 'Passcode'}
                 autoFocus={!security.metadata?.biometricEnabled}
-                editable={!busy}
+                editable={!busy && !isLockedOut}
                 keyboardType="number-pad"
                 maxLength={16}
                 onChangeText={(value) => updatePasscode(value, setPasscode)}
@@ -211,10 +248,10 @@ export default function DataSecurityGate() {
                 </>
               )}
 
-              {!!error && (
+              {!!displayedError && (
                 <View accessibilityLiveRegion="polite" style={styles.errorRow}>
                   <Icon name="alert-circle-outline" size={17} color={theme.colors.error} />
-                  <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>
+                  <Text style={[styles.error, { color: theme.colors.error }]}>{displayedError}</Text>
                 </View>
               )}
             </View>
@@ -240,7 +277,7 @@ export default function DataSecurityGate() {
 
             {((isSetup && setupStage === 'create') || !automaticEntry || (!isSetup && !savedPasscodeLength)) && <TouchableOpacity
               accessibilityRole="button"
-              disabled={busy}
+              disabled={busy || isLockedOut}
               onPress={isSetup && automaticEntry ? continueSetup : () => submit()}
               style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}
             >
@@ -253,7 +290,7 @@ export default function DataSecurityGate() {
             {!isSetup && security.metadata.biometricEnabled && (
               <TouchableOpacity
                 accessibilityRole="button"
-                disabled={busy}
+                disabled={busy || isLockedOut}
                 onPress={unlockBiometric}
                 style={[styles.secondaryButton, { borderColor: theme.colors.border.medium }]}
               >
@@ -308,4 +345,9 @@ const styles = StyleSheet.create({
   skipButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 8 },
   skipText: { fontSize: 14, fontWeight: '650' },
   disabled: { opacity: 0.55 },
+  lockoutScreen: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  lockoutMark: { alignItems: 'center', borderRadius: 10, height: 64, justifyContent: 'center', width: 64 },
+  lockoutTitle: { fontSize: 24, fontWeight: '750', letterSpacing: -0.4, marginTop: 22, textAlign: 'center' },
+  lockoutCountdown: { fontSize: 52, fontVariant: ['tabular-nums'], fontWeight: '700', letterSpacing: -1, marginTop: 18 },
+  lockoutBody: { fontSize: 15, lineHeight: 22, marginTop: 14, maxWidth: 340, textAlign: 'center' },
 });

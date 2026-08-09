@@ -32,7 +32,9 @@ import {
   createEncryptionRecoveryMetadata,
   decryptDataString,
   encryptDataString,
+  formatPasscodeLockoutTime,
   getEncryptionMetadata,
+  getPasscodeLockoutStatus,
   hasEncryptionKey,
   isEncryptedDataString,
   lockEncryption,
@@ -51,9 +53,19 @@ describe('data encryption', () => {
     lockEncryption();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('requires a numeric passcode of at least four digits', async () => {
     await expect(configureEncryption('123', false)).rejects.toThrow('at least 4 digits');
     await expect(configureEncryption('abcd', false)).rejects.toThrow('at least 4 digits');
+  });
+
+  it('formats passcode lockout countdowns', () => {
+    expect(formatPasscodeLockoutTime(30_000)).toBe('0:30');
+    expect(formatPasscodeLockoutTime(60_000)).toBe('1:00');
+    expect(formatPasscodeLockoutTime(5 * 60_000 - 1)).toBe('5:00');
   });
 
   it('encrypts authenticated data and only unwraps it with the correct passcode', async () => {
@@ -68,6 +80,36 @@ describe('data encryption', () => {
     await expect(unlockWithPasscode('0000')).resolves.toBe(false);
     await expect(unlockWithPasscode('4826')).resolves.toBe(true);
     expect(JSON.parse(decryptDataString(encrypted))).toEqual({ driverName: 'Private driver' });
+  });
+
+  it('escalates persistent passcode lockouts after five incorrect attempts and caps them at 30 minutes', async () => {
+    let now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    await configureEncryption('4826', false);
+    lockEncryption();
+
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      await expect(unlockWithPasscode('0000')).resolves.toBe(false);
+      expect(await getPasscodeLockoutStatus()).toEqual({ failedAttempts: attempt, lockedUntil: 0 });
+    }
+
+    await expect(unlockWithPasscode('0000')).resolves.toBe(false);
+    expect(await getPasscodeLockoutStatus()).toEqual({ failedAttempts: 5, lockedUntil: now + 60_000 });
+
+    // Attempts made during the delay do not advance the escalation level.
+    await expect(unlockWithPasscode('0000')).resolves.toBe(false);
+    expect((await getPasscodeLockoutStatus()).failedAttempts).toBe(5);
+
+    for (const expectedMinutes of [5, 15, 30, 30]) {
+      now = (await getPasscodeLockoutStatus()).lockedUntil + 1;
+      await expect(unlockWithPasscode('0000')).resolves.toBe(false);
+      const lockout = await getPasscodeLockoutStatus();
+      expect(lockout.lockedUntil).toBe(now + expectedMinutes * 60_000);
+    }
+
+    now = (await getPasscodeLockoutStatus()).lockedUntil + 1;
+    await expect(unlockWithPasscode('4826')).resolves.toBe(true);
+    expect(await getPasscodeLockoutStatus()).toEqual({ failedAttempts: 0, lockedUntil: 0 });
   });
 
   it('stores and uses the mobile-friendly passcode work factor', async () => {

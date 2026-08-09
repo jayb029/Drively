@@ -6,6 +6,7 @@ import {
   chooseUnencryptedStorage,
   configureEncryption,
   getEncryptionMetadata,
+  getPasscodeLockoutStatus,
   lockEncryption,
   migrateTransientDataToEncryption,
   migrateTransientDataFromEncryption,
@@ -27,13 +28,15 @@ export function DataSecurityProvider({ children }) {
   const [metadata, setMetadata] = useState(null);
   const [unlocked, setUnlocked] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+  const [passcodeLockoutUntil, setPasscodeLockoutUntil] = useState(0);
   const leftForegroundRef = useRef(false);
 
   useEffect(() => {
-    Promise.all([getEncryptionMetadata(), canUseBiometrics()]).then(([saved, available]) => {
+    Promise.all([getEncryptionMetadata(), canUseBiometrics(), getPasscodeLockoutStatus()]).then(([saved, available, lockout]) => {
       setMetadata(saved);
       setBiometricsAvailable(available);
       setUnlocked(saved.configured && !saved.enabled);
+      setPasscodeLockoutUntil(lockout.lockedUntil);
     });
   }, []);
 
@@ -53,10 +56,22 @@ export function DataSecurityProvider({ children }) {
     return () => subscription.remove();
   }, [metadata?.enabled]);
 
+  useEffect(() => {
+    if (!passcodeLockoutUntil) return undefined;
+    const remaining = passcodeLockoutUntil - Date.now();
+    if (remaining <= 0) {
+      setPasscodeLockoutUntil(0);
+      return undefined;
+    }
+    const timer = setTimeout(() => setPasscodeLockoutUntil(0), remaining);
+    return () => clearTimeout(timer);
+  }, [passcodeLockoutUntil]);
+
   const value = useMemo(() => ({
     metadata,
     unlocked,
     biometricsAvailable,
+    passcodeLockoutUntil,
     setupEncryption: async (passcode, useBiometrics) => {
       const next = await configureEncryption(passcode, useBiometrics);
       await rewriteCurrentDataForEncryption();
@@ -76,6 +91,12 @@ export function DataSecurityProvider({ children }) {
     },
     unlockPasscode: async (passcode) => {
       const success = await unlockWithPasscode(passcode);
+      const lockout = await getPasscodeLockoutStatus();
+      setPasscodeLockoutUntil(lockout.lockedUntil);
+      if (lockout.lockedUntil) {
+        lockEncryption();
+        setUnlocked(false);
+      }
       if (success) {
         setMetadata((current) => ({ ...current, passcodeLength: passcode.length }));
         setUnlocked(true);
@@ -84,12 +105,21 @@ export function DataSecurityProvider({ children }) {
     },
     unlockBiometric: async () => {
       const success = await unlockWithBiometrics();
+      const lockout = await getPasscodeLockoutStatus();
+      setPasscodeLockoutUntil(lockout.lockedUntil);
       if (success) setUnlocked(true);
       return success;
     },
-    requireReauthentication: async (passcode, biometric = false) => (
-      biometric ? unlockWithBiometrics() : unlockWithPasscode(passcode)
-    ),
+    requireReauthentication: async (passcode, biometric = false) => {
+      const success = biometric ? await unlockWithBiometrics() : await unlockWithPasscode(passcode);
+      const lockout = await getPasscodeLockoutStatus();
+      setPasscodeLockoutUntil(lockout.lockedUntil);
+      if (lockout.lockedUntil) {
+        lockEncryption();
+        setUnlocked(false);
+      }
+      return success;
+    },
     setBiometricsEnabled: async (enabled) => {
       const next = await setBiometricUnlockEnabled(enabled);
       setMetadata(next);
@@ -110,7 +140,7 @@ export function DataSecurityProvider({ children }) {
       setMetadata(next);
       setUnlocked(true);
     },
-  }), [biometricsAvailable, metadata, unlocked]);
+  }), [biometricsAvailable, metadata, passcodeLockoutUntil, unlocked]);
 
   return <DataSecurityContext.Provider value={value}>{children}</DataSecurityContext.Provider>;
 }
@@ -121,6 +151,7 @@ export function useDataSecurity() {
   // unencrypted state; the real app always installs DataSecurityProvider.
   return context || {
     metadata: { configured: true, enabled: false, biometricEnabled: false },
+    passcodeLockoutUntil: 0,
     unlocked: true,
     biometricsAvailable: false,
     beginEncryptionSetup: async () => undefined,

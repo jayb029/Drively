@@ -4,6 +4,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import PasscodeKeypad from './PasscodeKeypad';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatPasscodeLockoutTime } from '../utils/dataEncryption';
 
 export default function ReauthenticationModal({
   body = 'Confirm your identity before Drively creates the full plaintext JSON backup.',
@@ -23,6 +24,8 @@ export default function ReauthenticationModal({
   const passcodeLength = Number.isInteger(security.metadata?.passcodeLength)
     ? security.metadata.passcodeLength
     : null;
+  const lockoutRemaining = Math.max(0, (security.passcodeLockoutUntil || 0) - Date.now());
+  const isLockedOut = lockoutRemaining > 0;
 
   const finish = () => {
     setPasscode('');
@@ -31,6 +34,7 @@ export default function ReauthenticationModal({
   };
 
   const authenticate = async (candidate = passcode, biometric = false) => {
+    if (isLockedOut) return;
     setBusy(true);
     setError('');
     const success = await security.requireReauthentication(candidate, biometric);
@@ -53,6 +57,9 @@ export default function ReauthenticationModal({
     if (error) setError('');
     if (passcodeLength && next.length === passcodeLength) authenticate(next);
   };
+  const displayedError = isLockedOut
+    ? `Too many incorrect attempts. Try again in ${formatPasscodeLockoutTime(lockoutRemaining)}.`
+    : error;
 
   return (
     <Modal animationType="fade" onRequestClose={cancel} transparent visible={visible}>
@@ -66,7 +73,7 @@ export default function ReauthenticationModal({
           <Text style={[styles.body, { color: theme.colors.text.secondary }]}>{body}</Text>
           {children || (automaticEntry ? (
             <PasscodeKeypad
-              busy={busy}
+              busy={busy || isLockedOut}
               compact
               expectedLength={passcodeLength}
               onChange={updatePasscode}
@@ -74,7 +81,7 @@ export default function ReauthenticationModal({
             />
           ) : <TextInput
             autoFocus
-            editable={!busy}
+            editable={!busy && !isLockedOut}
             keyboardType="number-pad"
             onChangeText={(value) => setPasscode(value.replace(/\D/g, ''))}
             onSubmitEditing={() => authenticate()}
@@ -84,12 +91,12 @@ export default function ReauthenticationModal({
             style={[styles.input, { borderColor: theme.colors.border.light, color: theme.colors.text.primary }]}
             value={passcode}
           />)}
-          {!children && !!error && <Text style={[styles.error, { color: theme.colors.error }]}>{error}</Text>}
-          {!children && (!automaticEntry || !passcodeLength) && <TouchableOpacity disabled={busy || passcode.length < 4} onPress={() => authenticate()} style={[styles.primary, { backgroundColor: theme.colors.primary }]}>
+          {!children && !!displayedError && <Text accessibilityLiveRegion="polite" style={[styles.error, { color: theme.colors.error }]}>{displayedError}</Text>}
+          {!children && (!automaticEntry || !passcodeLength) && <TouchableOpacity disabled={busy || isLockedOut || passcode.length < 4} onPress={() => authenticate()} style={[styles.primary, { backgroundColor: theme.colors.primary }]}>
             <Text style={styles.primaryText}>{confirmLabel}</Text>
           </TouchableOpacity>}
           {!children && security.metadata?.biometricEnabled && (
-            <TouchableOpacity disabled={busy} onPress={() => authenticate(passcode, true)} style={[styles.secondary, { borderColor: theme.colors.border.light }]}>
+            <TouchableOpacity disabled={busy || isLockedOut} onPress={() => authenticate(passcode, true)} style={[styles.secondary, { borderColor: theme.colors.border.light }]}>
               <Icon name="fingerprint" size={20} color={theme.colors.primary} />
               <Text style={[styles.secondaryText, { color: theme.colors.text.primary }]}>Use biometrics</Text>
             </TouchableOpacity>

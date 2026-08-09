@@ -10,6 +10,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { logger } from './logger';
 
 const SECURITY_METADATA_KEY = 'drively.dataEncryption.v1';
+const PASSCODE_LOCKOUT_KEY = 'drively.passcodeLockout.v1';
 const BIOMETRIC_KEY_NAME = 'drively.dataEncryption.biometricKey.v1';
 export const ENCRYPTION_RECOVERY_FILE_NAME = 'encryption-recovery.json';
 const RECOVERY_METADATA_PATHS = [
@@ -22,8 +23,48 @@ const RECOVERY_METADATA_PATHS = [
 // wrappers are upgraded after their first successful unlock.
 const KDF_ITERATIONS = 100000;
 const AAD = new TextEncoder().encode('drively-data-encryption-v1');
+const LOCKOUT_DURATIONS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
 
 let sessionKey = null;
+
+export function formatPasscodeLockoutTime(milliseconds) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+export async function getPasscodeLockoutStatus(now = Date.now()) {
+  try {
+    const saved = JSON.parse(await AsyncStorage.getItem(PASSCODE_LOCKOUT_KEY));
+    const failedAttempts = Number.isSafeInteger(saved?.failedAttempts) && saved.failedAttempts > 0
+      ? saved.failedAttempts
+      : 0;
+    const lockedUntil = Number.isFinite(saved?.lockedUntil) && saved.lockedUntil > now
+      ? saved.lockedUntil
+      : 0;
+    return { failedAttempts, lockedUntil };
+  } catch {
+    return { failedAttempts: 0, lockedUntil: 0 };
+  }
+}
+
+async function clearPasscodeLockout() {
+  await AsyncStorage.removeItem(PASSCODE_LOCKOUT_KEY);
+}
+
+async function recordIncorrectPasscode(now = Date.now()) {
+  const current = await getPasscodeLockoutStatus(now);
+  const failedAttempts = current.failedAttempts + 1;
+  let lockedUntil = 0;
+  if (failedAttempts >= 5) {
+    const durationIndex = Math.min(failedAttempts - 5, LOCKOUT_DURATIONS_MS.length - 1);
+    lockedUntil = now + LOCKOUT_DURATIONS_MS[durationIndex];
+  }
+  const next = { failedAttempts, lockedUntil };
+  await AsyncStorage.setItem(PASSCODE_LOCKOUT_KEY, JSON.stringify(next));
+  return next;
+}
 
 function normalizeRecoveryMetadata(value) {
   const iterations = Number(value?.kdf?.iterations);
@@ -165,6 +206,7 @@ export async function configureEncryption(passcode, useBiometrics) {
     kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
   };
   await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(metadata));
+  await clearPasscodeLockout();
   sessionKey = dataKey;
   return metadata;
 }
@@ -173,6 +215,7 @@ export async function chooseUnencryptedStorage() {
   await SecureStore.deleteItemAsync(BIOMETRIC_KEY_NAME);
   const metadata = { configured: true, enabled: false, biometricEnabled: false };
   await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(metadata));
+  await clearPasscodeLockout();
   sessionKey = null;
   return metadata;
 }
@@ -192,6 +235,7 @@ export async function changeEncryptionPasscode(passcode) {
     kdf: { name: 'PBKDF2-SHA256', iterations: KDF_ITERATIONS },
   };
   await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
+  await clearPasscodeLockout();
   return next;
 }
 
@@ -202,8 +246,13 @@ export async function requestEncryptionSetup() {
 }
 
 export async function unlockWithPasscode(passcode) {
+  const lockout = await getPasscodeLockoutStatus();
+  if (lockout.lockedUntil) return false;
   const metadata = await getEncryptionMetadata();
-  if (!metadata.enabled) return true;
+  if (!metadata.enabled) {
+    await clearPasscodeLockout();
+    return true;
+  }
   try {
     const storedIterations = Number(metadata.kdf?.iterations);
     const iterations = Number.isSafeInteger(storedIterations) && storedIterations > 0
@@ -211,8 +260,12 @@ export async function unlockWithPasscode(passcode) {
       : 210000;
     const passcodeKey = await derivePasscodeKey(passcode, base64ToBytes(metadata.salt), iterations);
     const key = decryptBytes(metadata.wrappedKey, passcodeKey);
-    if (key.length !== 32) return false;
+    if (key.length !== 32) {
+      await recordIncorrectPasscode();
+      return false;
+    }
     sessionKey = key;
+    await clearPasscodeLockout();
 
     const unlockedMetadata = metadata.passcodeLength === passcode.length
       ? metadata
@@ -247,11 +300,14 @@ export async function unlockWithPasscode(passcode) {
     }
     return true;
   } catch {
+    await recordIncorrectPasscode();
     return false;
   }
 }
 
 export async function unlockWithBiometrics() {
+  const lockout = await getPasscodeLockoutStatus();
+  if (lockout.lockedUntil) return false;
   try {
     const encodedKey = await SecureStore.getItemAsync(BIOMETRIC_KEY_NAME, {
       requireAuthentication: true,
@@ -259,7 +315,9 @@ export async function unlockWithBiometrics() {
     });
     if (!encodedKey) return false;
     sessionKey = base64ToBytes(encodedKey);
-    return sessionKey.length === 32;
+    if (sessionKey.length !== 32) return false;
+    await clearPasscodeLockout();
+    return true;
   } catch {
     return false;
   }
