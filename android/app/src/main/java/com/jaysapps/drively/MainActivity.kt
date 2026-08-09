@@ -1,8 +1,12 @@
 package com.jaysapps.drively
 
 import android.app.PictureInPictureParams
+import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Build
@@ -11,11 +15,9 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.Rational
-import android.view.Gravity
-import android.view.View
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
 
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.ReactApplication
@@ -33,19 +35,17 @@ import java.util.Locale
 class MainActivity : ReactActivity() {
   companion object {
     private const val TAG = "DrivePip"
+    private const val DORMANT_PIP_SURFACE_ALPHA = 0.001f
   }
 
   private var driveTrackingActive = false
   private var latestDriveStats: DrivePipStats = DrivePipStats()
   private val pipUiHandler = Handler(Looper.getMainLooper())
-  private var pipOverlay: LinearLayout? = null
-  private var pipElapsedText: TextView? = null
-  private var pipDistanceText: TextView? = null
-  private var pipSpeedText: TextView? = null
+  private var pipOverlay: DrivePipSurfaceView? = null
   private val pipTicker = object : Runnable {
     override fun run() {
-      updatePipOverlayText()
-      if (pipOverlay?.visibility == View.VISIBLE) {
+      pipOverlay?.render(latestDriveStats)
+      if (pipOverlay?.alpha == 1f) {
         pipUiHandler.postDelayed(this, 1000)
       }
     }
@@ -59,7 +59,9 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
-    installPipOverlay()
+    // React Native may replace the activity content children after onCreate in
+    // optimized builds. Install after that attachment work has been queued.
+    window.decorView.post { installPipOverlay() }
   }
 
   fun setDriveTrackingActive(active: Boolean) {
@@ -165,71 +167,35 @@ class MainActivity : ReactActivity() {
 
   private fun installPipOverlay() {
     val root = window.decorView.findViewById<FrameLayout>(android.R.id.content)
-    val overlay = LinearLayout(this).apply {
-      orientation = LinearLayout.VERTICAL
-      setBackgroundColor(Color.rgb(21, 24, 21))
-      gravity = Gravity.CENTER_VERTICAL
-      setPadding(28, 14, 28, 14)
-      // Keep the compact layout measured before PiP starts. A GONE overlay is
-      // not laid out, so Android can capture the full React Native screen as
-      // the first PiP frame before the compact view is ready.
-      visibility = View.INVISIBLE
+    val existingOverlay = pipOverlay
+    if (existingOverlay?.isAttachedToWindow == true && existingOverlay.parent === root) {
+      return
     }
 
-    val statusText = TextView(this).apply {
-      text = "TRACKING"
-      setTextColor(Color.rgb(233, 199, 159))
-      textSize = 12f
-      typeface = Typeface.DEFAULT_BOLD
-      includeFontPadding = false
+    (existingOverlay?.parent as? android.view.ViewGroup)?.removeView(existingOverlay)
+    val overlay = DrivePipSurfaceView(this).apply {
+      // Keep the SurfaceView alive and transparent before PiP so Android can
+      // transition to an already-created live buffer instead of a JS snapshot.
+      // Alpha 0 lets Android 17 prune the SurfaceView altogether, so there is
+      // no live producer for PiP to composite until a bounds change. A tiny
+      // non-zero alpha keeps the surface allocated without visibly affecting
+      // the full-screen React UI.
+      alpha = DORMANT_PIP_SURFACE_ALPHA
     }
-
-    pipElapsedText = TextView(this).apply {
-      setTextColor(Color.rgb(242, 243, 238))
-      textSize = 38f
-      typeface = Typeface.DEFAULT_BOLD
-      includeFontPadding = false
-    }
-
-    val statsRow = LinearLayout(this).apply {
-      orientation = LinearLayout.HORIZONTAL
-      gravity = Gravity.CENTER_VERTICAL
-    }
-
-    pipDistanceText = createPipStatText()
-    pipSpeedText = createPipStatText()
-    statsRow.addView(pipDistanceText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-    statsRow.addView(pipSpeedText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-
-    overlay.addView(statusText)
-    overlay.addView(pipElapsedText, LinearLayout.LayoutParams(
-      LinearLayout.LayoutParams.MATCH_PARENT,
-      LinearLayout.LayoutParams.WRAP_CONTENT
-    ).apply {
-      topMargin = 8
-      bottomMargin = 8
-    })
-    overlay.addView(statsRow)
 
     root.addView(overlay, FrameLayout.LayoutParams(
       FrameLayout.LayoutParams.MATCH_PARENT,
       FrameLayout.LayoutParams.MATCH_PARENT
     ))
     pipOverlay = overlay
-    updatePipOverlayText()
-  }
-
-  private fun createPipStatText(): TextView {
-    return TextView(this).apply {
-      setTextColor(Color.rgb(242, 243, 238))
-      textSize = 17f
-      typeface = Typeface.DEFAULT_BOLD
-      includeFontPadding = false
-    }
+    overlay.render(latestDriveStats)
   }
 
   private fun setPipOverlayVisible(visible: Boolean) {
-    pipOverlay?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+    if (visible && pipOverlay?.isAttachedToWindow != true) {
+      installPipOverlay()
+    }
+    pipOverlay?.alpha = if (visible) 1f else DORMANT_PIP_SURFACE_ALPHA
     if (visible) {
       // React Native can attach or reorder its root after Activity.onCreate in
       // release builds. Keep the native live-stat overlay above that surface.
@@ -244,17 +210,7 @@ class MainActivity : ReactActivity() {
   }
 
   private fun updatePipOverlayText() {
-    pipElapsedText?.text = latestDriveStats.elapsedText()
-    pipDistanceText?.text = "Distance\n${latestDriveStats.distanceText}"
-    pipSpeedText?.text = "Speed\n${latestDriveStats.speedText}"
-
-    if (pipOverlay?.visibility == View.VISIBLE) {
-      // Some release devices retain the last PiP buffer until a window resize
-      // unless the activity root is explicitly invalidated. Ensure timer and
-      // location updates submit a fresh frame while the app is backgrounded.
-      pipOverlay?.postInvalidateOnAnimation()
-      window.decorView.postInvalidateOnAnimation()
-    }
+    pipOverlay?.render(latestDriveStats)
   }
 
   private fun buildPictureInPictureParams(): PictureInPictureParams {
@@ -283,14 +239,14 @@ class MainActivity : ReactActivity() {
   }
 
   private fun buildPipSourceRectHint(): Rect? {
-    val overlay = pipOverlay ?: return null
-    if (!overlay.isLaidOut || overlay.width <= 0 || overlay.height <= 0) return null
+    val content = window.decorView
+    if (!content.isLaidOut || content.width <= 0 || content.height <= 0) return null
 
     val location = IntArray(2)
-    overlay.getLocationInWindow(location)
-    val sourceWidth = overlay.width
-    val sourceHeight = minOf(overlay.height, sourceWidth * 9 / 16)
-    val sourceTop = location[1] + (overlay.height - sourceHeight) / 2
+    content.getLocationInWindow(location)
+    val sourceWidth = content.width
+    val sourceHeight = minOf(content.height, sourceWidth * 9 / 16)
+    val sourceTop = location[1] + (content.height - sourceHeight) / 2
 
     return Rect(
       location[0],
@@ -353,6 +309,88 @@ class MainActivity : ReactActivity() {
       // Use the default back button implementation on Android S
       // because it's doing more than [Activity.moveTaskToBack] in fact.
       super.invokeDefaultOnBackPressed()
+  }
+}
+
+private class DrivePipSurfaceView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
+  private val backgroundColor = Color.rgb(21, 24, 21)
+  private val foregroundColor = Color.rgb(242, 243, 238)
+  private val accentColor = Color.rgb(233, 199, 159)
+  private var latestStats = DrivePipStats()
+
+  private val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = accentColor
+    typeface = Typeface.DEFAULT_BOLD
+  }
+  private val elapsedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = foregroundColor
+    typeface = Typeface.DEFAULT_BOLD
+  }
+  private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = foregroundColor
+    typeface = Typeface.DEFAULT_BOLD
+  }
+  private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    color = Color.rgb(180, 184, 176)
+    typeface = Typeface.DEFAULT
+  }
+
+  init {
+    holder.setFormat(PixelFormat.OPAQUE)
+    holder.addCallback(this)
+    setZOrderOnTop(true)
+  }
+
+  fun render(stats: DrivePipStats) {
+    latestStats = stats
+    if (!holder.surface.isValid) return
+
+    var canvas: Canvas? = null
+    try {
+      canvas = holder.lockCanvas()
+      canvas?.let(::drawStats)
+    } catch (error: IllegalArgumentException) {
+      Log.w("DrivePip", "PiP surface was unavailable while drawing.", error)
+    } finally {
+      if (canvas != null) {
+        holder.unlockCanvasAndPost(canvas)
+      }
+    }
+  }
+
+  private fun drawStats(canvas: Canvas) {
+    val width = canvas.width.toFloat()
+    val height = canvas.height.toFloat()
+    val left = width * 0.055f
+    val secondColumn = width * 0.55f
+
+    canvas.drawColor(backgroundColor)
+
+    statusPaint.textSize = height * 0.09f
+    elapsedPaint.textSize = height * 0.27f
+    valuePaint.textSize = height * 0.13f
+    labelPaint.textSize = height * 0.085f
+
+    canvas.drawText("TRACKING", left, height * 0.18f, statusPaint)
+    canvas.drawText(latestStats.elapsedText(), left, height * 0.53f, elapsedPaint)
+    canvas.drawText(latestStats.distanceText, left, height * 0.79f, valuePaint)
+    canvas.drawText("Distance", left, height * 0.92f, labelPaint)
+    canvas.drawText(latestStats.speedText, secondColumn, height * 0.79f, valuePaint)
+    canvas.drawText("Speed", secondColumn, height * 0.92f, labelPaint)
+  }
+
+  override fun surfaceCreated(holder: SurfaceHolder) {
+    Log.d("DrivePip", "PiP surface created (${width}x${height}).")
+    render(latestStats)
+  }
+
+  override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+    Log.d("DrivePip", "PiP surface changed (${width}x${height}).")
+    render(latestStats)
+  }
+
+  override fun surfaceDestroyed(holder: SurfaceHolder) {
+    Log.d("DrivePip", "PiP surface destroyed.")
   }
 }
 
