@@ -168,7 +168,10 @@ class MainActivity : ReactActivity() {
       setBackgroundColor(Color.rgb(21, 24, 21))
       gravity = Gravity.CENTER_VERTICAL
       setPadding(28, 14, 28, 14)
-      visibility = View.GONE
+      // Keep the compact layout measured before PiP starts. A GONE overlay is
+      // not laid out, so Android can capture the full React Native screen as
+      // the first PiP frame before the compact view is ready.
+      visibility = View.INVISIBLE
     }
 
     val statusText = TextView(this).apply {
@@ -224,7 +227,7 @@ class MainActivity : ReactActivity() {
   }
 
   private fun setPipOverlayVisible(visible: Boolean) {
-    pipOverlay?.visibility = if (visible) View.VISIBLE else View.GONE
+    pipOverlay?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     pipUiHandler.removeCallbacks(pipTicker)
     if (visible) {
       updatePipOverlayText()
@@ -236,6 +239,14 @@ class MainActivity : ReactActivity() {
     pipElapsedText?.text = latestDriveStats.elapsedText()
     pipDistanceText?.text = "Distance\n${latestDriveStats.distanceText}"
     pipSpeedText?.text = "Speed\n${latestDriveStats.speedText}"
+
+    if (pipOverlay?.visibility == View.VISIBLE) {
+      // Some release devices retain the last PiP buffer until a window resize
+      // unless the activity root is explicitly invalidated. Ensure timer and
+      // location updates submit a fresh frame while the app is backgrounded.
+      pipOverlay?.postInvalidateOnAnimation()
+      window.decorView.postInvalidateOnAnimation()
+    }
   }
 
   private fun buildPictureInPictureParams(): PictureInPictureParams {
