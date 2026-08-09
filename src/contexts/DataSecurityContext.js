@@ -2,11 +2,13 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { AppState } from 'react-native';
 import {
   canUseBiometrics,
+  acknowledgeEncryptionRecoveryKey,
   changeEncryptionPasscode,
   chooseUnencryptedStorage,
   configureEncryption,
   getEncryptionMetadata,
   getPasscodeLockoutStatus,
+  generateEncryptionRecoveryKey,
   lockEncryption,
   migrateTransientDataToEncryption,
   migrateTransientDataFromEncryption,
@@ -15,6 +17,7 @@ import {
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
+  unlockWithRecoveryKey,
 } from '../utils/dataEncryption';
 import {
   rewriteCurrentDataForEncryption,
@@ -29,6 +32,7 @@ export function DataSecurityProvider({ children }) {
   const [unlocked, setUnlocked] = useState(false);
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [passcodeLockoutUntil, setPasscodeLockoutUntil] = useState(0);
+  const [pendingRecoveryKey, setPendingRecoveryKey] = useState(null);
   const leftForegroundRef = useRef(false);
 
   useEffect(() => {
@@ -72,11 +76,15 @@ export function DataSecurityProvider({ children }) {
     unlocked,
     biometricsAvailable,
     passcodeLockoutUntil,
+    pendingRecoveryKey,
     setupEncryption: async (passcode, useBiometrics) => {
-      const next = await configureEncryption(passcode, useBiometrics);
+      await configureEncryption(passcode, useBiometrics);
       await rewriteCurrentDataForEncryption();
       await migrateTransientDataToEncryption();
-      setMetadata(next);
+      const generated = await generateEncryptionRecoveryKey();
+      await syncCurrentEncryptionRecoveryMetadata(generated.metadata);
+      setMetadata(generated.metadata);
+      setPendingRecoveryKey(generated.recoveryKey);
       setUnlocked(true);
     },
     skipEncryption: async () => {
@@ -98,7 +106,14 @@ export function DataSecurityProvider({ children }) {
         setUnlocked(false);
       }
       if (success) {
-        setMetadata((current) => ({ ...current, passcodeLength: passcode.length }));
+        let next = await getEncryptionMetadata();
+        if (!next.recovery || next.recoveryKeyAcknowledged !== true) {
+          const generated = await generateEncryptionRecoveryKey();
+          next = generated.metadata;
+          await syncCurrentEncryptionRecoveryMetadata(next);
+          setPendingRecoveryKey(generated.recoveryKey);
+        }
+        setMetadata(next);
         setUnlocked(true);
       }
       return success;
@@ -107,8 +122,32 @@ export function DataSecurityProvider({ children }) {
       const success = await unlockWithBiometrics();
       const lockout = await getPasscodeLockoutStatus();
       setPasscodeLockoutUntil(lockout.lockedUntil);
-      if (success) setUnlocked(true);
+      if (success) {
+        let next = await getEncryptionMetadata();
+        if (!next.recovery || next.recoveryKeyAcknowledged !== true) {
+          const generated = await generateEncryptionRecoveryKey();
+          next = generated.metadata;
+          await syncCurrentEncryptionRecoveryMetadata(next);
+          setPendingRecoveryKey(generated.recoveryKey);
+        }
+        setMetadata(next);
+        setUnlocked(true);
+      }
       return success;
+    },
+    verifyRecoveryKey: async (recoveryKey) => {
+      const success = await unlockWithRecoveryKey(recoveryKey);
+      const lockout = await getPasscodeLockoutStatus();
+      setPasscodeLockoutUntil(lockout.lockedUntil);
+      return success;
+    },
+    completePasscodeRecovery: async (passcode) => {
+      const next = await changeEncryptionPasscode(passcode);
+      const generated = await generateEncryptionRecoveryKey();
+      await syncCurrentEncryptionRecoveryMetadata(generated.metadata);
+      setMetadata(generated.metadata);
+      setPendingRecoveryKey(generated.recoveryKey);
+      setUnlocked(true);
     },
     requireReauthentication: async (passcode, biometric = false) => {
       const success = biometric ? await unlockWithBiometrics() : await unlockWithPasscode(passcode);
@@ -133,6 +172,19 @@ export function DataSecurityProvider({ children }) {
       await syncCurrentEncryptionRecoveryMetadata(next);
       setMetadata(next);
     },
+    regenerateRecoveryKey: async () => {
+      const generated = await generateEncryptionRecoveryKey();
+      await syncCurrentEncryptionRecoveryMetadata(generated.metadata);
+      setMetadata(generated.metadata);
+      setPendingRecoveryKey(generated.recoveryKey);
+      return generated.recoveryKey;
+    },
+    acknowledgeRecoveryKey: async () => {
+      const next = await acknowledgeEncryptionRecoveryKey();
+      await syncCurrentEncryptionRecoveryMetadata(next);
+      setMetadata(next);
+      setPendingRecoveryKey(null);
+    },
     disableEncryption: async () => {
       await rewriteCurrentDataWithoutEncryption();
       await migrateTransientDataFromEncryption();
@@ -140,7 +192,7 @@ export function DataSecurityProvider({ children }) {
       setMetadata(next);
       setUnlocked(true);
     },
-  }), [biometricsAvailable, metadata, passcodeLockoutUntil, unlocked]);
+  }), [biometricsAvailable, metadata, passcodeLockoutUntil, pendingRecoveryKey, unlocked]);
 
   return <DataSecurityContext.Provider value={value}>{children}</DataSecurityContext.Provider>;
 }
@@ -152,12 +204,17 @@ export function useDataSecurity() {
   return context || {
     metadata: { configured: true, enabled: false, biometricEnabled: false },
     passcodeLockoutUntil: 0,
+    pendingRecoveryKey: null,
     unlocked: true,
     biometricsAvailable: false,
     beginEncryptionSetup: async () => undefined,
     changePasscode: async () => undefined,
     disableEncryption: async () => undefined,
     requireReauthentication: async () => true,
+    verifyRecoveryKey: async () => false,
+    completePasscodeRecovery: async () => undefined,
+    regenerateRecoveryKey: async () => undefined,
+    acknowledgeRecoveryKey: async () => undefined,
     setBiometricsEnabled: async () => undefined,
     setAutomaticPasscodeEntry: async () => undefined,
   };

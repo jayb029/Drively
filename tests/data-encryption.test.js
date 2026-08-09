@@ -26,6 +26,7 @@ jest.mock('expo-secure-store', () => ({
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   canUseBiometrics,
+  acknowledgeEncryptionRecoveryKey,
   changeEncryptionPasscode,
   chooseUnencryptedStorage,
   configureEncryption,
@@ -33,6 +34,7 @@ import {
   decryptDataString,
   encryptDataString,
   formatPasscodeLockoutTime,
+  generateEncryptionRecoveryKey,
   getEncryptionMetadata,
   getPasscodeLockoutStatus,
   hasEncryptionKey,
@@ -43,6 +45,7 @@ import {
   setBiometricUnlockEnabled,
   unlockWithBiometrics,
   unlockWithPasscode,
+  unlockWithRecoveryKey,
 } from '../src/utils/dataEncryption';
 
 describe('data encryption', () => {
@@ -138,6 +141,42 @@ describe('data encryption', () => {
     await expect(unlockWithPasscode('4826')).resolves.toBe(false);
     await expect(unlockWithPasscode('7391')).resolves.toBe(true);
     expect(JSON.parse(decryptDataString(encrypted))).toEqual({ driverName: 'Private driver' });
+  });
+
+  it('recovers encrypted data and allows a forgotten passcode to be replaced', async () => {
+    await configureEncryption('4826', false);
+    const encrypted = encryptDataString(JSON.stringify({ driverName: 'Private driver' }));
+    const generated = await generateEncryptionRecoveryKey();
+    expect(generated.recoveryKey).toMatch(/^DRIVELY(?:-[A-HJ-NP-Z2-9]{4}){6}$/);
+    expect(JSON.stringify(generated.metadata)).not.toContain(generated.recoveryKey);
+
+    lockEncryption();
+    await expect(unlockWithRecoveryKey('DRIVELY-WRONG-KEY')).resolves.toBe(false);
+    await expect(unlockWithRecoveryKey(generated.recoveryKey.toLowerCase().replaceAll('-', ' '))).resolves.toBe(true);
+    await changeEncryptionPasscode('7391');
+    jest.requireMock('expo-crypto').getRandomBytes.mockImplementationOnce((length) => Uint8Array.from({ length }, (_, index) => (index * 13 + 5) % 256));
+    const replacement = await generateEncryptionRecoveryKey();
+    lockEncryption();
+    await expect(unlockWithRecoveryKey(generated.recoveryKey)).resolves.toBe(false);
+    await expect(unlockWithRecoveryKey(replacement.recoveryKey)).resolves.toBe(true);
+    lockEncryption();
+    await expect(unlockWithPasscode('4826')).resolves.toBe(false);
+    await expect(unlockWithPasscode('7391')).resolves.toBe(true);
+    expect(JSON.parse(decryptDataString(encrypted))).toEqual({ driverName: 'Private driver' });
+  });
+
+  it('acknowledges recovery-key storage and invalidates a regenerated key', async () => {
+    await configureEncryption('4826', false);
+    const first = await generateEncryptionRecoveryKey();
+    expect(first.metadata.recoveryKeyAcknowledged).toBe(false);
+    expect((await acknowledgeEncryptionRecoveryKey()).recoveryKeyAcknowledged).toBe(true);
+
+    jest.requireMock('expo-crypto').getRandomBytes.mockImplementationOnce((length) => Uint8Array.from({ length }, (_, index) => (index * 11 + 7) % 256));
+    const second = await generateEncryptionRecoveryKey();
+    expect(second.recoveryKey).not.toBe(first.recoveryKey);
+    lockEncryption();
+    await expect(unlockWithRecoveryKey(first.recoveryKey)).resolves.toBe(false);
+    await expect(unlockWithRecoveryKey(second.recoveryKey)).resolves.toBe(true);
   });
 
   it('rewrites encrypted transient drive state as plaintext before opting out', async () => {

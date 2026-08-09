@@ -23,6 +23,9 @@ const RECOVERY_METADATA_PATHS = [
 // wrappers are upgraded after their first successful unlock.
 const KDF_ITERATIONS = 100000;
 const AAD = new TextEncoder().encode('drively-data-encryption-v1');
+const RECOVERY_KEY_PREFIX = 'DRIVELY';
+const RECOVERY_KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const RECOVERY_KEY_BYTES = 15;
 const LOCKOUT_DURATIONS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
 
 let sessionKey = null;
@@ -86,6 +89,14 @@ function normalizeRecoveryMetadata(value) {
     salt: value.salt,
     wrappedKey: value.wrappedKey,
     kdf: { name: 'PBKDF2-SHA256', iterations },
+    ...(value.recovery?.version === 1
+      && typeof value.recovery?.wrappedKey?.nonce === 'string'
+      && typeof value.recovery?.wrappedKey?.ciphertext === 'string'
+      ? {
+        recovery: value.recovery,
+        recoveryKeyAcknowledged: value.recoveryKeyAcknowledged === true,
+      }
+      : {}),
   };
 }
 
@@ -144,6 +155,34 @@ function decryptBytes(payload, key) {
   return gcm(key, base64ToBytes(payload.nonce), AAD).decrypt(base64ToBytes(payload.ciphertext));
 }
 
+function encodeRecoveryKey(bytes) {
+  let bits = 0;
+  let value = 0;
+  let encoded = '';
+  bytes.forEach((byte) => {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      encoded += RECOVERY_KEY_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    value &= bits > 0 ? (1 << bits) - 1 : 0;
+  });
+  if (bits > 0) encoded += RECOVERY_KEY_ALPHABET[(value << (5 - bits)) & 31];
+  return `${RECOVERY_KEY_PREFIX}-${encoded.match(/.{1,4}/g).join('-')}`;
+}
+
+export function normalizeRecoveryKey(value) {
+  const normalized = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return normalized.startsWith(RECOVERY_KEY_PREFIX)
+    ? normalized.slice(RECOVERY_KEY_PREFIX.length)
+    : normalized;
+}
+
+function deriveRecoveryKey(value) {
+  return sha256(new TextEncoder().encode(normalizeRecoveryKey(value)));
+}
+
 export async function getEncryptionMetadata() {
   const raw = await AsyncStorage.getItem(SECURITY_METADATA_KEY);
   if (!raw) {
@@ -165,7 +204,36 @@ export function createEncryptionRecoveryMetadata(metadata) {
     salt: metadata.salt,
     wrappedKey: metadata.wrappedKey,
     kdf: metadata.kdf,
+    ...(metadata.recovery ? {
+      recovery: metadata.recovery,
+      recoveryKeyAcknowledged: metadata.recoveryKeyAcknowledged === true,
+    } : {}),
   });
+}
+
+export async function generateEncryptionRecoveryKey() {
+  const metadata = await getEncryptionMetadata();
+  if (!metadata.enabled || !hasEncryptionKey()) throw new Error('Unlock Drively first.');
+
+  const recoveryKey = encodeRecoveryKey(Crypto.getRandomBytes(RECOVERY_KEY_BYTES));
+  const next = {
+    ...metadata,
+    recovery: {
+      version: 1,
+      wrappedKey: encryptBytes(sessionKey, deriveRecoveryKey(recoveryKey)),
+    },
+    recoveryKeyAcknowledged: false,
+  };
+  await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
+  return { metadata: next, recoveryKey };
+}
+
+export async function acknowledgeEncryptionRecoveryKey() {
+  const metadata = await getEncryptionMetadata();
+  if (!metadata.recovery) return metadata;
+  const next = { ...metadata, recoveryKeyAcknowledged: true };
+  await AsyncStorage.setItem(SECURITY_METADATA_KEY, JSON.stringify(next));
+  return next;
 }
 
 export async function canUseBiometrics() {
@@ -298,6 +366,26 @@ export async function unlockWithPasscode(passcode) {
         }
       })();
     }
+    return true;
+  } catch {
+    await recordIncorrectPasscode();
+    return false;
+  }
+}
+
+export async function unlockWithRecoveryKey(recoveryKey) {
+  const lockout = await getPasscodeLockoutStatus();
+  if (lockout.lockedUntil) return false;
+  const metadata = await getEncryptionMetadata();
+  if (!metadata.enabled || metadata.recovery?.version !== 1 || normalizeRecoveryKey(recoveryKey).length !== 24) {
+    await recordIncorrectPasscode();
+    return false;
+  }
+  try {
+    const key = decryptBytes(metadata.recovery.wrappedKey, deriveRecoveryKey(recoveryKey));
+    if (key.length !== 32) throw new Error('Invalid recovery key.');
+    sessionKey = key;
+    await clearPasscodeLockout();
     return true;
   } catch {
     await recordIncorrectPasscode();

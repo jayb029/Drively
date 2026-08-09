@@ -11,6 +11,7 @@ import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
 import { ThemeProvider, preloadThemePreference, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import DataSecurityGate from './src/screens/DataSecurityGate';
+import RecoveryKeyModal from './src/components/RecoveryKeyModal';
 import { initializeLogger, logger, logError, scheduleLogCleanup } from './src/utils/logger';
 import { configureDriveNotifications } from './src/services/driveDetection';
 import { addDrivePipModeListener, isInDrivePictureInPictureMode } from './src/services/drivePip';
@@ -130,7 +131,7 @@ function AppContent() {
 function SecuredAppContent() {
   const { metadata, unlocked } = useDataSecurity();
   if (!metadata || !unlocked) return <DataSecurityGate />;
-  return <AppContent />;
+  return <><AppContent /><RecoveryKeyModal /></>;
 }
 
 export default function App() {

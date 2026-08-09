@@ -93,6 +93,17 @@ export default function EncryptionSettingsScreen({ navigation }) {
       setEditingPasscode(true);
       return;
     }
+    if (action === 'regenerate') {
+      setBusy(true);
+      try {
+        await security.regenerateRecoveryKey();
+      } catch {
+        Alert.alert('Recovery key not changed', 'Drively could not safely generate a new recovery key. Your current key still works.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
 
     setBusy(true);
     try {
@@ -149,6 +160,18 @@ export default function EncryptionSettingsScreen({ navigation }) {
           value={security.metadata?.automaticPasscodeEntry !== false}
         />
         <SettingsActionRow label="Change passcode" onPress={() => setReauthAction('change')} subtitle="Choose a new passcode without re-encrypting your logbook." />
+        <SettingsActionRow
+          label="Generate a new recovery key"
+          onPress={() => Alert.alert(
+            'Replace recovery key?',
+            'Your current recovery key will stop working immediately. You will need to save the new key.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Continue', onPress: () => setReauthAction('regenerate') },
+            ]
+          )}
+          subtitle="Replace a lost or exposed recovery key. The old key will no longer unlock your logbook."
+        />
       </SettingsSection>
 
       <SettingsSection title="Encryption">
@@ -167,13 +190,15 @@ export default function EncryptionSettingsScreen({ navigation }) {
             : 'Choose a passcode with at least 4 digits.')
           : reauthAction === 'disable'
           ? 'Confirm your identity before Drively rewrites the full logbook without app-level encryption.'
+          : reauthAction === 'regenerate'
+          ? 'Confirm your identity before Drively replaces your current recovery key.'
           : 'Confirm your identity before choosing a new encryption passcode.'}
         confirmLabel="Confirm and continue"
         onCancel={editingPasscode ? resetPasscodeEditor : () => setReauthAction(null)}
         onSuccess={finishReauthentication}
         title={editingPasscode
           ? (passcodeStage === 'confirm' ? 'Confirm new passcode' : 'Enter new passcode')
-          : reauthAction === 'disable' ? 'Confirm encryption change' : 'Confirm passcode change'}
+          : reauthAction === 'disable' ? 'Confirm encryption change' : reauthAction === 'regenerate' ? 'Confirm recovery-key change' : 'Confirm passcode change'}
         visible={!!reauthAction || editingPasscode}
       >
         {editingPasscode ? (

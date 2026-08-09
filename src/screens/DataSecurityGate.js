@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +17,7 @@ import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
 import { useTheme } from '../contexts/ThemeContext';
 import PasscodeKeypad from '../components/PasscodeKeypad';
+import RecoveryKeyInput from '../components/RecoveryKeyInput';
 import { formatPasscodeLockoutTime } from '../utils/dataEncryption';
 
 export default function DataSecurityGate() {
@@ -28,8 +30,14 @@ export default function DataSecurityGate() {
   const [error, setError] = useState('');
   const [setupStage, setSetupStage] = useState('create');
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryStage, setRecoveryStage] = useState('key');
+  const [recoveryKey, setRecoveryKey] = useState('DRIVELY-');
+  const [newPasscode, setNewPasscode] = useState('');
+  const [newPasscodeConfirmation, setNewPasscodeConfirmation] = useState('');
   const automaticBiometricAttempted = useRef(false);
   const confirmationRef = useRef(null);
+  const scrollRef = useRef(null);
   const isSetup = security.metadata?.configured === false;
   const automaticEntry = isSetup || security.metadata?.automaticPasscodeEntry !== false;
   const savedPasscodeLength = Number.isInteger(security.metadata?.passcodeLength)
@@ -56,6 +64,14 @@ export default function DataSecurityGate() {
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [security.passcodeLockoutUntil]);
+
+  useEffect(() => {
+    if (!recoveryMode || recoveryStage !== 'key') return undefined;
+    const subscription = Keyboard.addListener('keyboardDidShow', () => {
+      requestAnimationFrame(() => scrollRef.current?.scrollTo({ animated: true, y: 260 }));
+    });
+    return () => subscription.remove();
+  }, [recoveryMode, recoveryStage]);
 
   if (!security.metadata) return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
 
@@ -143,6 +159,66 @@ export default function DataSecurityGate() {
     }
   };
 
+  const verifyRecoveryKey = async () => {
+    setError('');
+    if (recoveryKey.length !== 37) {
+      setError('Enter all 24 characters from your recovery key.');
+      return;
+    }
+    setBusy(true);
+    try {
+      if (await security.verifyRecoveryKey(recoveryKey)) {
+        setRecoveryStage('create');
+      } else {
+        setError('That recovery key is not valid.');
+      }
+    } catch {
+      setError('Drively could not verify the recovery key.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finishRecovery = async (candidate = newPasscode, candidateConfirmation = newPasscodeConfirmation) => {
+    if (!/^\d{4,}$/.test(candidate)) {
+      setError('Enter a new passcode with at least 4 digits.');
+      return;
+    }
+    if (candidate !== candidateConfirmation) {
+      setError('The new passcodes do not match.');
+      if (automaticEntry) setNewPasscodeConfirmation('');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await security.completePasscodeRecovery(candidate);
+    } catch {
+      setError('Drively could not change the passcode or replace the used recovery key.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateRecoveryKeypad = (next) => {
+    setError('');
+    if (recoveryStage === 'confirm') {
+      setNewPasscodeConfirmation(next);
+      if (next.length === newPasscode.length) finishRecovery(newPasscode, next);
+    } else {
+      setNewPasscode(next);
+    }
+  };
+
+  const continueRecoveryPasscode = () => {
+    if (!/^\d{4,}$/.test(newPasscode)) {
+      setError('Enter a new passcode with at least 4 digits.');
+      return;
+    }
+    setError('');
+    setRecoveryStage('confirm');
+  };
+
   const skip = () => Alert.alert(
     'Keep data unencrypted?',
     'Profiles, drive history, settings, and location-derived records will be stored without Drively encryption.',
@@ -174,9 +250,11 @@ export default function DataSecurityGate() {
           </TouchableOpacity>
         </View>
       )}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -186,10 +264,16 @@ export default function DataSecurityGate() {
             </View>
 
             <Text style={[styles.title, { color: theme.colors.text.primary }]}>
-              {isSetup ? 'Protect your Drively data' : 'Drively is locked'}
+              {recoveryMode ? (recoveryStage === 'key' ? 'Enter recovery key' : recoveryStage === 'confirm' ? 'Confirm new passcode' : 'Change passcode with recovery') : isSetup ? 'Protect your Drively data' : 'Drively is locked'}
             </Text>
             <Text style={[styles.body, { color: theme.colors.text.secondary }]}>
-              {isSetup
+              {recoveryMode
+                ? (recoveryStage === 'key'
+                  ? 'Enter the recovery key you saved to verify access to your encrypted logbook.'
+                  : recoveryStage === 'confirm'
+                  ? 'Enter the new passcode again. After it is changed, Drively will replace the recovery key you just used.'
+                  : 'Choose a new passcode for your encrypted logbook. Your saved data will stay intact.')
+                : isSetup
                 ? 'Create a passcode to encrypt your profiles, drives, settings, and location-derived records on this device.'
                 : 'Your data is encrypted. Unlock it to continue to Drively.'}
             </Text>
@@ -204,9 +288,28 @@ export default function DataSecurityGate() {
 
             <View style={styles.form}>
               <Text style={[styles.label, { color: theme.colors.text.primary }]}>
-                {isSetup && setupStage === 'confirm' ? 'Confirm passcode' : isSetup ? 'Create passcode' : 'Passcode'}
+                {recoveryMode ? (recoveryStage === 'key' ? 'Recovery key' : recoveryStage === 'confirm' ? 'Confirm new passcode' : 'New passcode') : isSetup && setupStage === 'confirm' ? 'Confirm passcode' : isSetup ? 'Create passcode' : 'Passcode'}
               </Text>
-              {automaticEntry ? (
+              {recoveryMode ? (
+                recoveryStage === 'key' ? (
+                  <RecoveryKeyInput disabled={busy} error={!!error} onChangeText={(value) => { setRecoveryKey(value); setError(''); }} value={recoveryKey} />
+                ) : automaticEntry ? (
+                  <PasscodeKeypad busy={busy} expectedLength={recoveryStage === 'confirm' ? newPasscode.length : null} onChange={updateRecoveryKeypad} value={recoveryStage === 'confirm' ? newPasscodeConfirmation : newPasscode} />
+                ) : (
+                  <TextInput
+                    accessibilityLabel={recoveryStage === 'confirm' ? 'Confirm new passcode' : 'New passcode'}
+                    autoFocus
+                    editable={!busy}
+                    keyboardType="number-pad"
+                    maxLength={16}
+                    onChangeText={(value) => updatePasscode(value, recoveryStage === 'confirm' ? setNewPasscodeConfirmation : setNewPasscode)}
+                    onSubmitEditing={recoveryStage === 'confirm' ? () => finishRecovery() : continueRecoveryPasscode}
+                    secureTextEntry
+                    style={[styles.input, inputColors]}
+                    value={recoveryStage === 'confirm' ? newPasscodeConfirmation : newPasscode}
+                  />
+                )
+              ) : automaticEntry ? (
                 <PasscodeKeypad
                   busy={busy || isLockedOut}
                   expectedLength={isSetup && setupStage === 'confirm' ? passcode.length : savedPasscodeLength}
@@ -229,7 +332,7 @@ export default function DataSecurityGate() {
                 value={passcode}
               />}
 
-              {isSetup && !automaticEntry && (
+              {!recoveryMode && isSetup && !automaticEntry && (
                 <>
                   <Text style={[styles.label, styles.confirmLabel, { color: theme.colors.text.primary }]}>Confirm passcode</Text>
                   <TextInput
@@ -256,7 +359,17 @@ export default function DataSecurityGate() {
               )}
             </View>
 
-            {isSetup && setupStage === 'create' && security.biometricsAvailable && (
+            {recoveryMode && recoveryStage !== 'confirm' && <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={recoveryStage === 'key' ? verifyRecoveryKey : continueRecoveryPasscode} style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}>
+              <Icon name={recoveryStage === 'key' ? 'shield-check-outline' : 'arrow-right'} size={20} color={theme.colors.text.inverse} />
+              <Text style={[styles.primaryButtonText, { color: theme.colors.text.inverse }]}>{busy ? 'Please wait…' : recoveryStage === 'key' ? 'Verify key' : 'Continue'}</Text>
+            </TouchableOpacity>}
+
+            {recoveryMode && recoveryStage === 'confirm' && !automaticEntry && <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => finishRecovery()} style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, busy && styles.disabled]}>
+              <Icon name="key-change" size={20} color={theme.colors.text.inverse} />
+              <Text style={[styles.primaryButtonText, { color: theme.colors.text.inverse }]}>{busy ? 'Changing…' : 'Change passcode'}</Text>
+            </TouchableOpacity>}
+
+            {!recoveryMode && isSetup && setupStage === 'create' && security.biometricsAvailable && (
               <View style={[styles.biometricRow, { borderColor: theme.colors.border.light }]}>
                 <Icon name="fingerprint" size={24} color={theme.colors.primary} />
                 <View style={styles.biometricCopy}>
@@ -275,7 +388,7 @@ export default function DataSecurityGate() {
               </View>
             )}
 
-            {((isSetup && setupStage === 'create') || !automaticEntry || (!isSetup && !savedPasscodeLength)) && <TouchableOpacity
+            {!recoveryMode && ((isSetup && setupStage === 'create') || !automaticEntry || (!isSetup && !savedPasscodeLength)) && <TouchableOpacity
               accessibilityRole="button"
               disabled={busy || isLockedOut}
               onPress={isSetup && automaticEntry ? continueSetup : () => submit()}
@@ -287,7 +400,7 @@ export default function DataSecurityGate() {
               </Text>
             </TouchableOpacity>}
 
-            {!isSetup && security.metadata.biometricEnabled && (
+            {!recoveryMode && !isSetup && security.metadata.biometricEnabled && (
               <TouchableOpacity
                 accessibilityRole="button"
                 disabled={busy || isLockedOut}
@@ -298,6 +411,10 @@ export default function DataSecurityGate() {
                 <Text style={[styles.secondaryButtonText, { color: theme.colors.text.primary }]}>Use biometrics</Text>
               </TouchableOpacity>
             )}
+
+            {!isSetup && <TouchableOpacity accessibilityRole="button" disabled={busy || isLockedOut} onPress={() => { setRecoveryMode((value) => !value); setRecoveryStage('key'); setRecoveryKey('DRIVELY-'); setNewPasscode(''); setNewPasscodeConfirmation(''); setError(''); }} style={styles.textButton}>
+              <Text style={[styles.textButtonText, { color: theme.colors.primary }]}>{recoveryMode ? 'Back to passcode unlock' : 'Forgot passcode?'}</Text>
+            </TouchableOpacity>}
 
           </View>
         </ScrollView>
@@ -341,6 +458,8 @@ const styles = StyleSheet.create({
   primaryButtonText: { fontSize: 15, fontWeight: '700' },
   secondaryButton: { alignItems: 'center', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 10, minHeight: 48, paddingHorizontal: 16 },
   secondaryButtonText: { fontSize: 15, fontWeight: '650' },
+  textButton: { alignItems: 'center', justifyContent: 'center', marginTop: 12, minHeight: 44 },
+  textButtonText: { fontSize: 14, fontWeight: '650' },
   topActionRow: { alignItems: 'flex-end', minHeight: 48, paddingHorizontal: 16 },
   skipButton: { alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 8 },
   skipText: { fontSize: 14, fontWeight: '650' },

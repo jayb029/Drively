@@ -134,6 +134,11 @@ describe('DrivingContext orchestration', () => {
   });
 
   test('adds, edits, and deletes drives while recalculating totals and streaks', async () => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const todayString = today.toISOString().split('T')[0];
+    const yesterdayString = yesterday.toISOString().split('T')[0];
     const view = await renderProvider({
       ...baseData(),
       user: { ...baseData().user, onboardingComplete: true },
@@ -142,14 +147,14 @@ describe('DrivingContext orchestration', () => {
     await act(async () => {
       currentDriving.addDrive({
         id: 'drive-1',
-        date: '2026-08-07',
+        date: yesterdayString,
         duration: 60,
         dayMinutes: 60,
         nightMinutes: 0,
       });
       currentDriving.addDrive({
         id: 'drive-2',
-        date: '2026-08-08',
+        date: todayString,
         duration: 30,
         dayMinutes: 10,
         nightMinutes: 20,
@@ -158,7 +163,7 @@ describe('DrivingContext orchestration', () => {
 
     await waitFor(() => expect(currentDriving.drives).toHaveLength(2));
     expect(currentDriving.user).toMatchObject({ completedDayHours: 70 / 60, completedNightHours: 20 / 60 });
-    expect(currentDriving.streaks).toMatchObject({ current: 2, longest: 2, lastDriveDate: '2026-08-08' });
+    expect(currentDriving.streaks).toMatchObject({ current: 2, longest: 2, lastDriveDate: todayString });
 
     await act(async () => {
       currentDriving.updateDrive({
