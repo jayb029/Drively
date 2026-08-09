@@ -39,7 +39,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Determine release versions
         id: release
@@ -117,9 +119,6 @@ jobs:
       - name: Run Expo and website build gate
         run: npm run test:build
 
-      - name: Run Android native compilation gate
-        run: npm run test:native
-
       # EAS Build injects the channel from eas.json. Local/Gradle builds must already
       # embed expo-channel-name or checkForUpdateAsync fails with "Failed to check for update".
       - name: Verify Expo OTA channel is embedded for production APKs
@@ -165,7 +164,13 @@ jobs:
           DRIVELY_UPLOAD_STORE_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_STORE_PASSWORD }}
           DRIVELY_UPLOAD_KEY_ALIAS: ${{ secrets.DRIVELY_UPLOAD_KEY_ALIAS }}
           DRIVELY_UPLOAD_KEY_PASSWORD: ${{ secrets.DRIVELY_UPLOAD_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon --max-workers=4 -Dorg.gradle.jvmargs="$GRADLE_JVM_ARGS"
+        run: >-
+          ./gradlew assembleRelease
+          -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+          --build-cache
+          --no-daemon
+          --max-workers=4
+          -Dorg.gradle.jvmargs="$GRADLE_JVM_ARGS"
 
       - name: Verify and name APK
         id: apk
