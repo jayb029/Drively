@@ -133,6 +133,13 @@ android {
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }
+        localProduction {
+            initWith release
+            signingConfig signingConfigs.debug
+            applicationIdSuffix ".localprod"
+            resValue "string", "app_name", "Drively Local Production"
+            matchingFallbacks = ['release']
+        }
     }
     packagingOptions {
         jniLibs {
@@ -146,11 +153,14 @@ android {
 }
 
 gradle.taskGraph.whenReady { taskGraph ->
+    def isLocalProductionBuild = gradle.startParameter.taskNames.any { taskName ->
+        taskName.toLowerCase().contains('localproduction')
+    }
     def hasReleaseTask = taskGraph.allTasks.any { task ->
         task.name.toLowerCase().contains('release')
     }
 
-    if (hasReleaseTask && !android.signingConfigs.release.storeFile) {
+    if (hasReleaseTask && !isLocalProductionBuild && !android.signingConfigs.release.storeFile) {
         throw new GradleException('Release signing requires DRIVELY_UPLOAD_STORE_FILE, DRIVELY_UPLOAD_STORE_PASSWORD, DRIVELY_UPLOAD_KEY_ALIAS, and DRIVELY_UPLOAD_KEY_PASSWORD.')
     }
 }
