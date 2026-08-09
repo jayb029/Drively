@@ -4,6 +4,8 @@ import { act, render, waitFor } from '@testing-library/react-native';
 
 const mockDriving = {
   loading: false,
+  settings: { exportDirectoryUri: null },
+  updateSettings: jest.fn(async () => undefined),
   user: { onboardingComplete: true },
 };
 jest.mock('../src/contexts/DrivingContext', () => ({
@@ -21,6 +23,12 @@ const mockEvaluateApkRelease = jest.fn();
 jest.mock('../src/services/apkUpdater', () => ({
   evaluateApkRelease: (...args) => mockEvaluateApkRelease(...args),
   fetchLatestApkRelease: (...args) => mockFetchLatestApkRelease(...args),
+}));
+const mockShareFullJsonBackup = jest.fn(async () => undefined);
+const mockSaveFullJsonBackup = jest.fn(async () => ({ directoryUri: 'content://backup' }));
+jest.mock('../src/services/jsonBackup', () => ({
+  saveFullJsonBackup: (...args) => mockSaveFullJsonBackup(...args),
+  shareFullJsonBackup: (...args) => mockShareFullJsonBackup(...args),
 }));
 
 const mockLogError = jest.fn(async () => undefined);
@@ -124,6 +132,9 @@ describe('APK and OTA update orchestration', () => {
       isAvailable: true,
     });
     mockDownloadOta.mockReset().mockResolvedValue({ downloaded: false });
+    mockShareFullJsonBackup.mockClear();
+    mockSaveFullJsonBackup.mockClear();
+    mockDriving.updateSettings.mockClear();
     mockLogError.mockClear();
     mockLogUserAction.mockClear();
     mockInitializeLogger.mockClear();
@@ -133,7 +144,7 @@ describe('APK and OTA update orchestration', () => {
     jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
   });
 
-  test('shows the APK changelog, backup guide, and download action for an available release', async () => {
+  test('shows the APK changelog and offers cancel, skip-backup, or backup actions', async () => {
     const originalDev = global.__DEV__;
     global.__DEV__ = true;
     const screen = await render(
@@ -155,16 +166,44 @@ describe('APK and OTA update orchestration', () => {
     expect(updatePrompt?.[1]).toContain('• Safer tracking');
     await act(async () => updatePrompt[2].find(({ text }) => text === 'Update').onPress());
 
-    const installGuide = getAlert('Before you update');
-    expect(installGuide?.[1]).toContain('Export a full JSON backup');
-    await act(async () => installGuide[2].find(({ text }) => text === 'Download APK').onPress());
+    const backupPrompt = getAlert('Back up before updating?');
+    expect(backupPrompt?.[2].map(({ text }) => text)).toEqual(['Cancel', 'Don’t back up', 'Back up']);
+    await act(async () => backupPrompt[2].find(({ text }) => text === 'Don’t back up').onPress());
 
+    expect(mockShareFullJsonBackup).not.toHaveBeenCalled();
     expect(Linking.openURL).toHaveBeenCalledWith(release.downloadUrl);
     expect(mockLogUserAction).toHaveBeenCalledWith('download_apk_update', 'UPDATES', expect.objectContaining({
       installedBuild: '15',
       releaseBuild: 16,
     }));
     global.__DEV__ = originalDev;
+    await screen.unmount();
+  });
+
+  test('creates a full backup and then opens the APK download', async () => {
+    const screen = await render(
+      <ApkUpdateProvider>
+        <UpdateProbe />
+      </ApkUpdateProvider>
+    );
+
+    await act(async () => {
+      await currentUpdate.checkForApkUpdate();
+    });
+    await act(async () => currentUpdate.startUpdate());
+    const backupPrompt = getAlert('Back up before updating?');
+    await act(async () => backupPrompt[2].find(({ text }) => text === 'Back up').onPress());
+    const destinationPrompt = getAlert('Save your backup');
+    expect(destinationPrompt?.[2].map(({ text }) => text)).toEqual(['Cancel', 'Share', 'Save to folder']);
+    await act(async () => destinationPrompt[2].find(({ text }) => text === 'Share').onPress());
+
+    expect(mockShareFullJsonBackup).toHaveBeenCalledTimes(1);
+    expect(mockLogUserAction).toHaveBeenCalledWith('backup_before_apk_update', 'UPDATES', {
+      destination: 'share',
+      releaseBuild: 16,
+      releaseVersion: '2.2.2',
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith(release.downloadUrl);
     await screen.unmount();
   });
 

@@ -2,7 +2,10 @@ import * as Application from 'expo-application';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Platform } from 'react-native';
 import { evaluateApkRelease, fetchLatestApkRelease } from '../services/apkUpdater';
+import { saveFullJsonBackup, shareFullJsonBackup } from '../services/jsonBackup';
+import ReauthenticationModal from '../components/ReauthenticationModal';
 import { logError, logUserAction } from '../utils/logger';
+import { useDataSecurity } from './DataSecurityContext';
 import { useDriving } from './DrivingContext';
 
 const ApkUpdateContext = createContext(null);
@@ -15,9 +18,12 @@ function getInstalledApk() {
 }
 
 export function ApkUpdateProvider({ children }) {
-  const { loading, user } = useDriving();
+  const { loading, settings, updateSettings, user } = useDriving();
+  const security = useDataSecurity();
   const installed = useMemo(getInstalledApk, []);
   const [state, setState] = useState({ status: 'idle', release: null, message: null });
+  const [backupRelease, setBackupRelease] = useState(null);
+  const [isPreparingUpdate, setIsPreparingUpdate] = useState(false);
 
   const openReleaseDownload = useCallback(async (release) => {
     if (!release?.downloadUrl) return false;
@@ -37,16 +43,71 @@ export function ApkUpdateProvider({ children }) {
     }
   }, [installed.versionCode]);
 
-  const showInstallGuide = useCallback((release) => {
+  const backupThenDownload = useCallback(async (release, destination) => {
+    if (!release || isPreparingUpdate) return false;
+    setIsPreparingUpdate(true);
+    try {
+      if (destination === 'save') {
+        const backup = await saveFullJsonBackup(settings.exportDirectoryUri);
+        if (backup.directoryUri !== settings.exportDirectoryUri) {
+          await updateSettings({
+            exportDirectoryUri: backup.directoryUri,
+            storagePermissionStatus: 'granted',
+          });
+        }
+      } else {
+        await shareFullJsonBackup();
+      }
+      await logUserAction('backup_before_apk_update', 'UPDATES', {
+        destination,
+        releaseBuild: release.versionCode,
+        releaseVersion: release.version,
+      });
+      return await openReleaseDownload(release);
+    } catch (error) {
+      await logError(error, 'APK_UPDATER', 'Failed to back up before APK update');
+      Alert.alert(
+        'Backup not completed',
+        'Drively did not open the update because the backup could not be created. Try again, or choose Don’t back up.'
+      );
+      return false;
+    } finally {
+      setIsPreparingUpdate(false);
+    }
+  }, [isPreparingUpdate, openReleaseDownload, settings.exportDirectoryUri, updateSettings]);
+
+  const chooseBackupDestination = useCallback((release) => {
     Alert.alert(
-      'Before you update',
-      '1. In Settings, open Data and backups.\n2. Export a full JSON backup and save it somewhere safe.\n3. Download and open the APK.\n4. If Android asks, allow installs from your browser, then tap Update.\n\nYour existing Drively data should remain in place, but a fresh backup is strongly recommended.',
+      'Save your backup',
+      'Choose a folder on this device, or share the complete JSON backup with another app or service you trust.',
       [
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Download APK', onPress: () => openReleaseDownload(release) },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share', onPress: () => backupThenDownload(release, 'share') },
+        { text: 'Save to folder', onPress: () => backupThenDownload(release, 'save') },
       ]
     );
-  }, [openReleaseDownload]);
+  }, [backupThenDownload]);
+
+  const beginBackup = useCallback((release) => {
+    if (security.metadata?.enabled) {
+      setBackupRelease(release);
+      return;
+    }
+    chooseBackupDestination(release);
+  }, [chooseBackupDestination, security.metadata?.enabled]);
+
+  const showInstallGuide = useCallback((release) => {
+    if (!release || isPreparingUpdate) return;
+    Alert.alert(
+      'Back up before updating?',
+      'Updating should keep your Drively data. A fresh backup is still recommended in case Android cannot complete the update.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Don’t back up', onPress: () => openReleaseDownload(release) },
+        { text: 'Back up', onPress: () => beginBackup(release) },
+      ]
+    );
+  }, [beginBackup, isPreparingUpdate, openReleaseDownload]);
 
   const showUpdatePrompt = useCallback((release) => {
     const changelog = release.changes.length
@@ -118,11 +179,27 @@ export function ApkUpdateProvider({ children }) {
     ...state,
     checkForApkUpdate,
     installed,
+    isPreparingUpdate,
     openReleaseDownload: downloadAvailableRelease,
     startUpdate: () => showInstallGuide(state.release),
-  }), [checkForApkUpdate, downloadAvailableRelease, installed, showInstallGuide, state]);
+  }), [checkForApkUpdate, downloadAvailableRelease, installed, isPreparingUpdate, showInstallGuide, state]);
 
-  return <ApkUpdateContext.Provider value={value}>{children}</ApkUpdateContext.Provider>;
+  return (
+    <ApkUpdateContext.Provider value={value}>
+      {children}
+      <ReauthenticationModal
+        body="Confirm your identity before Drively creates the full plaintext backup and continues to the APK update."
+        onCancel={() => setBackupRelease(null)}
+        onSuccess={() => {
+          const release = backupRelease;
+          setBackupRelease(null);
+          chooseBackupDestination(release);
+        }}
+        title="Unlock to back up and update"
+        visible={!!backupRelease}
+      />
+    </ApkUpdateContext.Provider>
+  );
 }
 
 export function useApkUpdate() {

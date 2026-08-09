@@ -15,11 +15,12 @@ import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { exportDataAsJSON, exportDrivesAsCSV } from '../utils/storage';
+import { exportDrivesAsCSV } from '../utils/storage';
 import { generatePDFReport } from '../utils/pdf';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import ReauthenticationModal from '../components/ReauthenticationModal';
 import { useDataSecurity } from '../contexts/DataSecurityContext';
+import { saveFullJsonBackup, shareFullJsonBackup } from '../services/jsonBackup';
 
 export default function ExportScreen({ navigation }) {
   const security = useDataSecurity();
@@ -191,27 +192,17 @@ export default function ExportScreen({ navigation }) {
     try {
       setExporting(true);
       
-      const jsonData = await exportDataAsJSON();
-      if (!jsonData) {
-        throw new Error('Failed to generate JSON data');
-      }
-
-      const fileName = `drively_backup_${new Date().toISOString().split('T')[0]}.json`;
-
       if (exportMode === 'share') {
-        const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-        await FileSystem.writeAsStringAsync(fileUri, jsonData);
-        
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri, {
-            mimeType: 'application/json',
-            dialogTitle: 'Export Driving Data',
-          });
-        } else {
-          Alert.alert('Sharing Not Available', 'Sharing is not available on this device.');
-        }
+        await shareFullJsonBackup();
       } else {
-        await saveFileWithPicker(jsonData, fileName, 'application/json');
+        const backup = await saveFullJsonBackup(settings.exportDirectoryUri);
+        if (backup.directoryUri !== settings.exportDirectoryUri) {
+          updateSettings({
+            exportDirectoryUri: backup.directoryUri,
+            storagePermissionStatus: 'granted',
+          });
+        }
+        Alert.alert('File Saved', `${backup.fileName} has been saved successfully!`);
       }
       
     } catch (error) {

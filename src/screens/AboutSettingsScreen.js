@@ -72,7 +72,11 @@ export default function AboutSettingsScreen({ navigation }) {
             </Text>
           )}
           {apkUpdate.status === 'available' && (
-            <SettingsButton label={`Update to Drively v${apkUpdate.release.version}`} onPress={apkUpdate.startUpdate} />
+            <SettingsButton
+              disabled={apkUpdate.isPreparingUpdate}
+              label={apkUpdate.isPreparingUpdate ? 'Preparing backup…' : `Update to Drively v${apkUpdate.release.version}`}
+              onPress={apkUpdate.startUpdate}
+            />
           )}
           <SettingsButton
             disabled={apkUpdate.status === 'checking'}
