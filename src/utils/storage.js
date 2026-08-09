@@ -9,6 +9,7 @@ import {
   encryptDataString,
   ENCRYPTION_RECOVERY_FILE_NAME,
   getEncryptionMetadata,
+  hasEncryptionKey,
 } from './dataEncryption';
 import {
   getDriveDayMinutes,
@@ -367,6 +368,14 @@ export async function loadData(options = {}) {
   const force = options?.force === true;
   if (memoryDataCache !== null && !force) {
     return memoryDataCache;
+  }
+
+  // A foreground refresh can race the app-lock transition. Encrypted files
+  // being unreadable while the session key is intentionally cleared is not a
+  // first launch or recovery failure, so never fall through to empty defaults.
+  const encryptionMetadata = await getEncryptionMetadata();
+  if (encryptionMetadata.enabled && !hasEncryptionKey()) {
+    throw new Error('Drively data is locked. Unlock before loading app data.');
   }
 
   let result;

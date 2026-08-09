@@ -90,6 +90,21 @@ describe('persistent storage simulated runtime', () => {
     expect((await harness.storage.loadData({ force: true })).drives).toEqual([]);
   });
 
+  test('never converts a locked encrypted read into first-run defaults', async () => {
+    const harness = await createHarness({
+      [LOCAL_MAIN]: JSON.stringify({ format: 'drively-encrypted', version: 1 }),
+      [LOCAL_BACKUP]: JSON.stringify({ format: 'drively-encrypted', version: 1 }),
+    });
+    await harness.AsyncStorage.setItem('drively.dataEncryption.v1', JSON.stringify({
+      configured: true,
+      enabled: true,
+      biometricEnabled: true,
+    }));
+
+    await expect(harness.storage.loadData({ force: true })).rejects.toThrow('Drively data is locked');
+    expect(harness.writes).toEqual([]);
+  });
+
   test('validates imports, deduplicates records, and merges only consented categories', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const { storage } = await createHarness();

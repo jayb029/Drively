@@ -26,6 +26,7 @@ import {
 } from '../utils/storage';
 
 const DataSecurityContext = createContext(null);
+export const APP_LOCK_GRACE_PERIOD_MS = 30_000;
 
 export function DataSecurityProvider({ children }) {
   const [metadata, setMetadata] = useState(null);
@@ -33,7 +34,7 @@ export function DataSecurityProvider({ children }) {
   const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const [passcodeLockoutUntil, setPasscodeLockoutUntil] = useState(0);
   const [pendingRecoveryKey, setPendingRecoveryKey] = useState(null);
-  const leftForegroundRef = useRef(false);
+  const backgroundedAtRef = useRef(null);
 
   useEffect(() => {
     Promise.all([getEncryptionMetadata(), canUseBiometrics(), getPasscodeLockoutStatus()]).then(([saved, available, lockout]) => {
@@ -47,14 +48,18 @@ export function DataSecurityProvider({ children }) {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       // `inactive` is also emitted while the OS biometric prompt is on top.
-      // Lock only after the app genuinely enters the background, otherwise a
-      // successful fingerprint/Face ID check can immediately lock itself.
+      // Record a genuine background transition, but only make a lock decision
+      // once the app is active again. This leaves PiP and OS-owned prompts
+      // alone, and gives quick app switches a small grace period.
       if (state === 'background') {
-        leftForegroundRef.current = true;
-      } else if (leftForegroundRef.current && metadata?.enabled) {
-        leftForegroundRef.current = false;
-        lockEncryption();
-        setUnlocked(false);
+        backgroundedAtRef.current ??= Date.now();
+      } else if (state === 'active' && backgroundedAtRef.current !== null) {
+        const timeAway = Date.now() - backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (metadata?.enabled && timeAway >= APP_LOCK_GRACE_PERIOD_MS) {
+          lockEncryption();
+          setUnlocked(false);
+        }
       }
     });
     return () => subscription.remove();

@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform } from 'react-native';
 import { StyleSheet, Text, View } from 'react-native';
@@ -130,8 +130,27 @@ function AppContent() {
 
 function SecuredAppContent() {
   const { metadata, unlocked } = useDataSecurity();
-  if (!metadata || !unlocked) return <DataSecurityGate />;
-  return <><AppContent /><RecoveryKeyModal /></>;
+  const hasEnteredApp = useRef(false);
+
+  if (unlocked) hasEnteredApp.current = true;
+  if (!metadata || !hasEnteredApp.current) return <DataSecurityGate />;
+
+  return (
+    <View style={styles.securedApp}>
+      <View
+        style={styles.securedApp}
+        importantForAccessibility={unlocked ? 'auto' : 'no-hide-descendants'}
+      >
+        <AppContent />
+        <RecoveryKeyModal />
+      </View>
+      {!unlocked && (
+        <View style={styles.lockOverlay} accessibilityViewIsModal>
+          <DataSecurityGate />
+        </View>
+      )}
+    </View>
+  );
 }
 
 export default function App() {
@@ -149,6 +168,13 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  securedApp: {
+    flex: 1,
+  },
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2000,
   },
   content: {
     flex: 1,
