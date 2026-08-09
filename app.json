@@ -2,7 +2,7 @@
   "expo": {
     "name": "Drively",
     "slug": "Drively",
-    "version": "2.3.0",
+    "version": "2.3.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -72,7 +72,7 @@
         "android.permission.INTERNET"
       ],
       "predictiveBackGestureEnabled": true,
-      "runtimeVersion": "2.3.0"
+      "runtimeVersion": "2.3.1"
     },
     "web": {
       "favicon": "./assets/favicon.png"
