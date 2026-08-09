@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Switch,
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +15,8 @@ import * as Location from 'expo-location';
 import Icon from '@expo/vector-icons/MaterialCommunityIcons';
 import { useDriving } from '../contexts/DrivingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDataSecurity } from '../contexts/DataSecurityContext';
+import PasscodeKeypad from '../components/PasscodeKeypad';
 import { requestNotificationPermission, requestStoragePermission } from '../utils/permissions';
 import {
   formatDateOfBirthFromDate,
@@ -98,6 +101,7 @@ const DISTANCE_OPTIONS = [
 
 export default function OnboardingScreen({ navigation }) {
   const { completeOnboarding, updateSettings } = useDriving();
+  const security = useDataSecurity();
   const { theme } = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const scrollViewRef = useRef(null);
@@ -114,6 +118,12 @@ export default function OnboardingScreen({ navigation }) {
   const [weatherEnabled, setWeatherEnabled] = useState(true);
   const [hasAgreed, setHasAgreed] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [protectionStage, setProtectionStage] = useState('create');
+  const [protectionPasscode, setProtectionPasscode] = useState('');
+  const [protectionConfirmation, setProtectionConfirmation] = useState('');
+  const [useBiometrics, setUseBiometrics] = useState(false);
+  const [protectionBusy, setProtectionBusy] = useState(false);
+  const [protectionError, setProtectionError] = useState('');
   const selectedOptionStyle = {
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.surfaceSecondary,
@@ -264,6 +274,7 @@ export default function OnboardingScreen({ navigation }) {
 
     if (!didComplete) {
       setIsCompleting(false);
+      setStep(6);
       Alert.alert('Setup Error', 'Drively could not save your setup. Please try again.');
       return;
     }
@@ -309,6 +320,64 @@ export default function OnboardingScreen({ navigation }) {
 
     updateSettings(permissionSettings);
   };
+
+  const continueProtectionSetup = () => {
+    if (!/^\d{4,}$/.test(protectionPasscode)) {
+      setProtectionError('Enter a passcode with at least 4 digits.');
+      return;
+    }
+    setProtectionError('');
+    setProtectionStage('confirm');
+  };
+
+  const finishProtectionSetup = async (confirmation = protectionConfirmation) => {
+    if (confirmation !== protectionPasscode) {
+      setProtectionError('The passcodes do not match. Try again.');
+      setProtectionConfirmation('');
+      return;
+    }
+    setProtectionBusy(true);
+    setProtectionError('');
+    try {
+      await security.setupEncryption(protectionPasscode, useBiometrics);
+      setStep(6);
+      haptics.success();
+    } catch (error) {
+      setProtectionError(error.message || 'Drively could not turn on data protection.');
+    } finally {
+      setProtectionBusy(false);
+    }
+  };
+
+  const updateProtectionConfirmation = (value) => {
+    setProtectionConfirmation(value);
+    setProtectionError('');
+    if (value.length === protectionPasscode.length) finishProtectionSetup(value);
+  };
+
+  const skipProtection = () => Alert.alert(
+    'Keep data unencrypted?',
+    'Profiles, drive history, settings, and location-derived records will be stored without Drively encryption.',
+    [
+      { text: 'Go back', style: 'cancel' },
+      {
+        text: 'Use without encryption',
+        style: 'destructive',
+        onPress: async () => {
+          setProtectionBusy(true);
+          setProtectionError('');
+          try {
+            await security.skipEncryption();
+            setStep(6);
+          } catch (error) {
+            setProtectionError(error.message || 'Drively could not save your data protection choice.');
+          } finally {
+            setProtectionBusy(false);
+          }
+        },
+      },
+    ]
+  );
 
   const renderStep1 = () => (
     <View style={styles.stepContainer}>
@@ -606,7 +675,7 @@ export default function OnboardingScreen({ navigation }) {
 
         <TouchableOpacity
           style={[styles.nextButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => setStep(5)}
+          onPress={() => setStep(security.metadata?.configured ? 6 : 5)}
         >
           <Text style={[styles.nextButtonText, { color: theme.colors.text.inverse }]}>Next</Text>
         </TouchableOpacity>
@@ -614,7 +683,108 @@ export default function OnboardingScreen({ navigation }) {
     </View>
   );
 
-  const renderStep5 = () => (
+  const renderStep5 = () => {
+    const confirming = protectionStage === 'confirm';
+    const keypadValue = confirming ? protectionConfirmation : protectionPasscode;
+
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Protect your data</Text>
+        <Text style={[styles.stepSubtitle, { color: theme.colors.text.secondary }]}>{confirming
+            ? 'Enter the same passcode again to confirm it.'
+            : 'Create a passcode to encrypt your profiles, drives, settings, and location-derived records on this device.'}</Text>
+
+        {!confirming && (
+          <View style={[styles.protectionSummary, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
+            <View style={styles.protectionSummaryRow}>
+              <Icon name="cellphone-lock" size={20} color={theme.colors.primary} />
+              <Text style={[styles.protectionSummaryText, { color: theme.colors.text.secondary }]}>Your saved Drively data will be encrypted on this device.</Text>
+            </View>
+            <View style={[styles.protectionDivider, { backgroundColor: theme.colors.border.light }]} />
+            <View style={styles.protectionSummaryRow}>
+              <Icon name="key-outline" size={20} color={theme.colors.primary} />
+              <Text style={[styles.protectionSummaryText, { color: theme.colors.text.secondary }]}>Drively cannot recover a forgotten passcode.</Text>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.protectionKeypadSection}>
+          <Text style={[styles.inputLabel, { color: theme.colors.text.primary }]}>{confirming ? 'Confirm passcode' : 'Create passcode'}</Text>
+          <PasscodeKeypad
+            busy={protectionBusy}
+            compact
+            expectedLength={confirming ? protectionPasscode.length : undefined}
+            onChange={(value) => {
+              if (confirming) updateProtectionConfirmation(value);
+              else {
+                setProtectionPasscode(value);
+                setProtectionError('');
+              }
+            }}
+            value={keypadValue}
+          />
+          {!!protectionError && (
+            <View accessibilityLiveRegion="polite" style={styles.protectionErrorRow}>
+              <Icon name="alert-circle-outline" size={18} color={theme.colors.error} />
+              <Text style={[styles.protectionErrorText, { color: theme.colors.error }]}>{protectionError}</Text>
+            </View>
+          )}
+        </View>
+
+        {!confirming && security.biometricsAvailable && (
+          <View style={[styles.biometricOption, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border.light }]}>
+            <Icon name="fingerprint" size={23} color={theme.colors.primary} />
+            <View style={styles.biometricCopy}>
+              <Text style={[styles.biometricTitle, { color: theme.colors.text.primary }]}>Unlock with biometrics</Text>
+              <Text style={[styles.biometricDescription, { color: theme.colors.text.secondary }]}>Use your fingerprint or face after setup.</Text>
+            </View>
+            <Switch
+              accessibilityLabel="Unlock with biometrics"
+              disabled={protectionBusy}
+              ios_backgroundColor={theme.colors.switchControl.trackOff}
+              onValueChange={setUseBiometrics}
+              thumbColor={useBiometrics ? theme.colors.switchControl.thumbOn : theme.colors.switchControl.thumbOff}
+              trackColor={{ false: theme.colors.switchControl.trackOff, true: theme.colors.switchControl.trackOn }}
+              value={useBiometrics}
+            />
+          </View>
+        )}
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            disabled={protectionBusy}
+            style={[styles.backButton, { borderColor: theme.colors.border.medium }]}
+            onPress={() => {
+              if (confirming) {
+                setProtectionStage('create');
+                setProtectionConfirmation('');
+                setProtectionError('');
+              } else {
+                setStep(4);
+              }
+            }}
+          >
+            <Text style={[styles.backButtonText, { color: theme.colors.text.secondary }]}>Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            disabled={protectionBusy}
+            style={[styles.continueButton, { backgroundColor: theme.colors.primary }, protectionBusy && styles.disabledButton]}
+            onPress={confirming ? () => finishProtectionSetup() : continueProtectionSetup}
+          >
+            <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>{protectionBusy ? 'Protecting…' : confirming ? 'Encrypt and continue' : 'Continue'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {!confirming && (
+          <TouchableOpacity accessibilityRole="button" disabled={protectionBusy} onPress={skipProtection} style={styles.skipProtectionButton}>
+            <Text style={[styles.skipProtectionText, { color: theme.colors.primary }]}>Skip for now</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  const renderStep6 = () => (
     <View style={styles.stepContainer}>
       <Text style={[styles.stepTitle, { color: theme.colors.text.primary }]}>Important Notice</Text>
       
@@ -674,9 +844,7 @@ export default function OnboardingScreen({ navigation }) {
           onPress={handleComplete}
           disabled={!hasAgreed || isCompleting}
         >
-          <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>
-            {isCompleting ? 'Starting...' : 'Get Started'}
-          </Text>
+          <Text style={[styles.continueButtonText, { color: theme.colors.text.inverse }]}>{isCompleting ? 'Starting...' : 'Get Started'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -690,7 +858,7 @@ export default function OnboardingScreen({ navigation }) {
           <Text style={[styles.subtitle, { color: theme.colors.text.secondary }]}>Your driving companion</Text>
           
           <View style={styles.progressContainer}>
-            {[1, 2, 3, 4, 5].map((num) => (
+            {[1, 2, 3, 4, 5, 6].map((num) => (
               <View
                 key={num}
                 style={[
@@ -708,6 +876,7 @@ export default function OnboardingScreen({ navigation }) {
         {step === 3 && renderStep3()}
         {step === 4 && renderStep4()}
         {step === 5 && renderStep5()}
+        {step === 6 && renderStep6()}
 
         <View style={styles.footer}>
           <Text style={[styles.footerBrand, { color: theme.colors.text.secondary }]}>Drively</Text>
@@ -934,6 +1103,71 @@ const createStyles = (theme) => StyleSheet.create({
     marginBottom: 24,
     gap: 16,
     elevation: 0,
+  },
+  protectionSummary: {
+    borderRadius: 7,
+    borderWidth: 1,
+    marginBottom: 22,
+    paddingHorizontal: 16,
+  },
+  protectionSummaryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 54,
+  },
+  protectionSummaryText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  protectionDivider: {
+    height: 1,
+  },
+  protectionKeypadSection: {
+    marginBottom: 20,
+  },
+  protectionErrorRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 12,
+  },
+  protectionErrorText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  biometricOption: {
+    alignItems: 'center',
+    borderRadius: 7,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+    minHeight: 72,
+    padding: 14,
+  },
+  biometricCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  biometricTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  biometricDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  skipProtectionButton: {
+    alignItems: 'center',
+    minHeight: 44,
+    paddingTop: 14,
+  },
+  skipProtectionText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   noticeText: {
     fontSize: 15,

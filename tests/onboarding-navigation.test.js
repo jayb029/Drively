@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockNavigation = {
   goBack: jest.fn(),
@@ -83,6 +83,16 @@ jest.mock('../src/contexts/ThemeContext', () => {
     useTheme: () => ({ isDark: false, theme: lightTheme }),
   };
 });
+jest.mock('../src/contexts/DataSecurityContext', () => ({
+  useDataSecurity: () => ({
+    biometricsAvailable: false,
+    metadata: { automaticPasscodeEntry: false, configured: false, enabled: false },
+    passcodeLockoutUntil: 0,
+    setupEncryption: jest.fn(async () => undefined),
+    skipEncryption: jest.fn(async () => undefined),
+    unlocked: false,
+  }),
+}));
 jest.mock('../src/utils/haptics', () => ({
   haptics: {
     action: jest.fn(),
@@ -158,6 +168,14 @@ async function pressText(screen, text) {
   await fireEvent.press(screen.getByText(text));
 }
 
+async function skipOnboardingEncryption(screen) {
+  await screen.findByText('Protect your data');
+  await pressText(screen, 'Skip for now');
+  const confirmation = Alert.alert.mock.calls.at(-1);
+  await act(async () => confirmation[2][1].onPress());
+  await screen.findByText('Important Notice');
+}
+
 describe('onboarding and navigation orchestration', () => {
   beforeEach(() => {
     mockLoadData.mockReset().mockResolvedValue(structuredClone(initialData));
@@ -197,6 +215,7 @@ describe('onboarding and navigation orchestration', () => {
     await pressText(screen, 'Automatic weather lookup');
     await pressText(screen, 'Next');
 
+    await skipOnboardingEncryption(screen);
     await pressText(screen, 'I understand and agree to these terms');
     await pressText(screen, 'Get Started');
 
@@ -238,6 +257,7 @@ describe('onboarding and navigation orchestration', () => {
     await pressText(screen, 'Continue');
     await pressText(screen, 'Next');
     await pressText(screen, 'Next');
+    await skipOnboardingEncryption(screen);
     await pressText(screen, 'I understand and agree to these terms');
     await pressText(screen, 'Get Started');
 

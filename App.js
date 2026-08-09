@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
-import { DrivingProvider } from './src/contexts/DrivingContext';
+import { DrivingProvider, useDriving } from './src/contexts/DrivingContext';
 import { DataSecurityProvider, useDataSecurity } from './src/contexts/DataSecurityContext';
 import { ApkUpdateProvider } from './src/contexts/ApkUpdateContext';
 import { ThemeProvider, preloadThemePreference, useTheme } from './src/contexts/ThemeContext';
@@ -121,6 +121,7 @@ function AppContent() {
             <View style={[styles.content, __DEV__ && !isInPictureInPictureMode && styles.developmentContent]}>
               <AppNavigator />
             </View>
+            <RecoveryKeyAfterOnboarding />
           </View>
         </ApkUpdateProvider>
       </DrivingProvider>
@@ -128,23 +129,30 @@ function AppContent() {
   );
 }
 
+function RecoveryKeyAfterOnboarding() {
+  const { user } = useDriving();
+  return user.onboardingComplete ? <RecoveryKeyModal /> : null;
+}
+
 function SecuredAppContent() {
   const { metadata, unlocked } = useDataSecurity();
   const hasEnteredApp = useRef(false);
 
-  if (unlocked) hasEnteredApp.current = true;
+  // Keep AppContent mounted while onboarding configures encryption. Changing
+  // the wrapper shape here would remount DrivingProvider and reset onboarding.
+  if (unlocked || (metadata && !metadata.configured)) hasEnteredApp.current = true;
   if (!metadata || !hasEnteredApp.current) return <DataSecurityGate />;
+  const locked = metadata.configured && !unlocked;
 
   return (
     <View style={styles.securedApp}>
       <View
         style={styles.securedApp}
-        importantForAccessibility={unlocked ? 'auto' : 'no-hide-descendants'}
+        importantForAccessibility={locked ? 'no-hide-descendants' : 'auto'}
       >
         <AppContent />
-        <RecoveryKeyModal />
       </View>
-      {!unlocked && (
+      {locked && (
         <View style={styles.lockOverlay} accessibilityViewIsModal>
           <DataSecurityGate />
         </View>
