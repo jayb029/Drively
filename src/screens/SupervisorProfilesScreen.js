@@ -37,7 +37,7 @@ const emptyForm = {
   signature: null,
 };
 
-export default function SupervisorProfilesScreen({ navigation }) {
+export default function SupervisorProfilesScreen({ navigation, route }) {
   const {
     addSupervisorProfile,
     deleteSupervisorProfile,
@@ -47,7 +47,7 @@ export default function SupervisorProfilesScreen({ navigation }) {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const [activeMenu, setActiveMenu] = useState('saved');
+  const [activeMenu, setActiveMenu] = useState(route?.params?.startNew ? 'save' : 'saved');
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [showSignaturePrompt, setShowSignaturePrompt] = useState(false);
