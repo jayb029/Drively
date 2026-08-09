@@ -231,7 +231,6 @@ export default function LogDriveScreen({ navigation }) {
 
   useEffect(() => {
     setDrivePipTrackingActive(isActive && !isPaused);
-    return () => setDrivePipTrackingActive(false);
   }, [isActive, isPaused]);
 
   useEffect(() => {
@@ -277,7 +276,7 @@ export default function LogDriveScreen({ navigation }) {
       const nextIsInPictureInPictureMode = !!event?.isInPictureInPictureMode;
       setIsInPictureInPictureMode(nextIsInPictureInPictureMode);
 
-      if (nextIsInPictureInPictureMode) {
+      if (nextIsInPictureInPictureMode && !navigation.isFocused()) {
         navigation.navigate('LogDrive');
       }
     });

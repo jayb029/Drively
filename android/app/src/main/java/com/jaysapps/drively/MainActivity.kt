@@ -3,6 +3,7 @@ package com.jaysapps.drively
 import android.app.PictureInPictureParams
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
@@ -112,6 +113,7 @@ class MainActivity : ReactActivity() {
         // Android 12+ performs the gesture transition using auto-enter. The
         // overlay still needs to be visible before that transition begins.
         setPipOverlayVisible(true)
+        updatePictureInPictureParams()
       } else {
         enterDrivePictureInPicture()
       }
@@ -228,6 +230,12 @@ class MainActivity : ReactActivity() {
 
   private fun setPipOverlayVisible(visible: Boolean) {
     pipOverlay?.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+    if (visible) {
+      // React Native can attach or reorder its root after Activity.onCreate in
+      // release builds. Keep the native live-stat overlay above that surface.
+      pipOverlay?.bringToFront()
+      pipOverlay?.elevation = 1000f
+    }
     pipUiHandler.removeCallbacks(pipTicker)
     if (visible) {
       updatePipOverlayText()
@@ -257,6 +265,8 @@ class MainActivity : ReactActivity() {
     val builder = PictureInPictureParams.Builder()
       .setAspectRatio(Rational(16, 9))
 
+    buildPipSourceRectHint()?.let(builder::setSourceRectHint)
+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       builder.setAutoEnterEnabled(driveTrackingActive)
       builder.setSeamlessResizeEnabled(false)
@@ -270,6 +280,24 @@ class MainActivity : ReactActivity() {
     }
 
     return builder.build()
+  }
+
+  private fun buildPipSourceRectHint(): Rect? {
+    val overlay = pipOverlay ?: return null
+    if (!overlay.isLaidOut || overlay.width <= 0 || overlay.height <= 0) return null
+
+    val location = IntArray(2)
+    overlay.getLocationInWindow(location)
+    val sourceWidth = overlay.width
+    val sourceHeight = minOf(overlay.height, sourceWidth * 9 / 16)
+    val sourceTop = location[1] + (overlay.height - sourceHeight) / 2
+
+    return Rect(
+      location[0],
+      sourceTop,
+      location[0] + sourceWidth,
+      sourceTop + sourceHeight,
+    )
   }
 
   private fun updatePictureInPictureParams() {
