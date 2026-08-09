@@ -143,6 +143,10 @@ function readElapsedClock(clock, now = Date.now()) {
   return clock.elapsedMs + Math.max(0, now - clock.updatedAt);
 }
 
+function getElapsedClockStartTimestamp(clock) {
+  return clock.updatedAt - clock.elapsedMs;
+}
+
 export default function LogDriveScreen({ navigation }) {
   const {
     addDrive,
@@ -242,10 +246,11 @@ export default function LogDriveScreen({ navigation }) {
   useEffect(() => {
     if (!isActive || isPaused || !isInPictureInPictureMode) return;
 
+    const currentElapsedMs = readElapsedClock(elapsedClockRef.current);
     updateDrivePipStats({
-      title: formatElapsed(elapsedMs),
+      title: formatElapsed(currentElapsedMs),
       subtitle: `${formatDistanceFromKm(distance / 1000, distanceUnit)} · ${formatSpeedFromKmh(currentSpeed, distanceUnit)}`,
-      startTimestamp: Date.now() - elapsedMs,
+      startTimestamp: getElapsedClockStartTimestamp(elapsedClockRef.current),
       distanceText: formatDistanceFromKm(distance / 1000, distanceUnit),
       speedText: formatSpeedFromKmh(currentSpeed, distanceUnit),
     });

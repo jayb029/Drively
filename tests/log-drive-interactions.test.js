@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 let mockTrackingListener;
+let mockPipListener;
 const mockRequestPermissions = jest.fn();
 const mockStartTracking = jest.fn();
 const mockPauseTracking = jest.fn();
@@ -24,7 +25,10 @@ jest.mock('../src/services/activeDriveTracking', () => ({
 }));
 
 jest.mock('../src/services/drivePip', () => ({
-  addDrivePipModeListener: jest.fn(() => ({ remove: jest.fn() })),
+  addDrivePipModeListener: jest.fn((listener) => {
+    mockPipListener = listener;
+    return { remove: jest.fn() };
+  }),
   isInDrivePictureInPictureMode: jest.fn(async () => false),
   setDrivePipTrackingActive: jest.fn(),
   updateDrivePipStats: jest.fn(),
@@ -74,8 +78,10 @@ jest.mock('../src/utils/logger', () => ({
 }));
 
 import LogDriveScreen from '../src/screens/LogDriveScreen';
+import { updateDrivePipStats } from '../src/services/drivePip';
 
 const navigation = {
+  isFocused: jest.fn(() => true),
   navigate: jest.fn(),
   setOptions: jest.fn(),
 };
@@ -127,6 +133,7 @@ async function renderDriveScreen() {
 describe('live drive interaction flow', () => {
   beforeEach(() => {
     mockTrackingListener = null;
+    mockPipListener = null;
     mockRequestPermissions.mockReset().mockResolvedValue({
       foreground: 'granted',
       background: 'granted',
@@ -148,7 +155,9 @@ describe('live drive interaction flow', () => {
     mockClearTracking.mockClear();
     mockAddDrive.mockClear();
     navigation.navigate.mockClear();
+    navigation.isFocused.mockClear();
     navigation.setOptions.mockClear();
+    updateDrivePipStats.mockClear();
     jest.spyOn(Date, 'now').mockReturnValue(startedAt);
     jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   });
@@ -212,6 +221,21 @@ describe('live drive interaction flow', () => {
     expect(mockStartTracking).not.toHaveBeenCalled();
     expect(getAlert('Location needed')).toBeTruthy();
     expect(screen.getByText('Log Drive')).toBeTruthy();
+    await screen.unmount();
+  });
+
+  test('keeps the native PiP elapsed clock anchored across a delayed transition', async () => {
+    const screen = await renderDriveScreen();
+
+    await fireEvent.press(screen.getByLabelText('Start drive'));
+    await act(async () => emitTracking({ elapsedMs: 120000 }));
+
+    jest.spyOn(Date, 'now').mockReturnValue(startedAt + 3450);
+    await act(async () => mockPipListener({ isInPictureInPictureMode: true }));
+
+    await waitFor(() => expect(updateDrivePipStats).toHaveBeenCalledWith(expect.objectContaining({
+      startTimestamp: startedAt - 120000,
+    })));
     await screen.unmount();
   });
 
