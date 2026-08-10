@@ -9,7 +9,7 @@ function Header() {
   return (
     <header className="site-header">
       <a className="brand" href="#top" aria-label="Drively home">
-        <img src="/drively-icon.png" alt="" />
+        <img src={`${import.meta.env.BASE_URL}drively-icon.png`} alt="" />
         <span>Drively</span>
       </a>
       <nav aria-label="Primary navigation">
